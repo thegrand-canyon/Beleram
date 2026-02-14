@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Track } from "@/types";
 import { COMPATIBLE_KEYS } from "@/lib/constants";
 import { filterTracks } from "@/lib/trackUtils";
+import { formatTime } from "@/lib/formatters";
 import { useDJStore } from "@/stores/djStore";
 
 export default function TrackLibrary() {
@@ -15,9 +16,12 @@ export default function TrackLibrary() {
   } = useDJStore();
 
   const [newTrack, setNewTrack] = useState({ title: "", artist: "", bpm: 128, key: "Am", genre: "House", energy: 5 });
+  const [hideDemos, setHideDemos] = useState(false);
 
-  const filtered = filterTracks(tracks, searchQuery);
+  const filtered = filterTracks(tracks, searchQuery).filter((t) => !hideDemos || t.source !== "demo");
   const currentKey = trackA?.key || trackB?.key;
+  const hasDemos = tracks.some((t) => t.source === "demo");
+  const hasLocal = tracks.some((t) => t.source === "local");
 
   const addAllFiltered = () => {
     filtered.forEach((t) => addToQueue(t));
@@ -36,12 +40,22 @@ export default function TrackLibrary() {
     setShowAddTrack(false);
   };
 
+  const handleDragStart = (e: React.DragEvent, track: Track) => {
+    e.dataTransfer.setData("application/beleram-track-id", track.id);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <>
       {/* Header controls */}
       <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div />
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {hasDemos && hasLocal && (
+            <button onClick={() => setHideDemos(!hideDemos)} style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${hideDemos ? "#ffaa0033" : "rgba(255,255,255,0.06)"}`, background: hideDemos ? "#ffaa0012" : "transparent", color: hideDemos ? "#ffaa00" : "#555", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>
+              {hideDemos ? "Show Demos" : "Hide Demos"}
+            </button>
+          )}
           <button onClick={() => setShowAddTrack(!showAddTrack)} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #8866ff33", background: showAddTrack ? "#8866ff22" : "transparent", color: "#8866ff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>+ Add Song</button>
           <button onClick={addAllFiltered} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#666", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Queue All</button>
           <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ padding: "5px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.3)", color: "#ccc", fontSize: 11, outline: "none", width: 160 }} />
@@ -85,6 +99,7 @@ export default function TrackLibrary() {
               <th style={{ padding: "7px", textAlign: "center" }}>BPM</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Key</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Energy</th>
+              <th style={{ padding: "7px", textAlign: "center" }}>Time</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Genre</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Actions</th>
             </tr>
@@ -95,13 +110,26 @@ export default function TrackLibrary() {
               const isLoaded = t.id === trackA?.id || t.id === trackB?.id;
               const inQueue = queue.find((q) => q.id === t.id);
               return (
-                <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.02)", opacity: isLoaded ? 0.5 : 1, background: isLoaded ? "rgba(136,102,255,0.03)" : "transparent" }}
+                <tr
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, t)}
+                  style={{
+                    borderBottom: "1px solid rgba(255,255,255,0.02)",
+                    opacity: isLoaded ? 0.5 : 1,
+                    background: isLoaded ? "rgba(136,102,255,0.03)" : "transparent",
+                    cursor: "grab",
+                  }}
                   onMouseEnter={(e) => !isLoaded && (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = isLoaded ? "rgba(136,102,255,0.03)" : "transparent")}>
+                  onMouseLeave={(e) => (e.currentTarget.style.background = isLoaded ? "rgba(136,102,255,0.03)" : "transparent")}
+                >
                   <td style={{ padding: "7px 10px", fontWeight: 600, color: "#ddd" }}>
-                    {t.title}
-                    {t.source === "local" && <span style={{ fontSize: 8, color: "#00f0ff", marginLeft: 6, padding: "1px 5px", background: "#00f0ff15", borderRadius: 3 }}>LOCAL</span>}
-                    {t.source === "demo" && <span style={{ fontSize: 8, color: "#ffaa00", marginLeft: 6, padding: "1px 5px", background: "#ffaa0012", borderRadius: 3 }}>DEMO</span>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, color: "#444", cursor: "grab" }}>⠿</span>
+                      {t.title}
+                      {t.source === "local" && <span style={{ fontSize: 8, color: "#00f0ff", padding: "1px 5px", background: "#00f0ff15", borderRadius: 3 }}>LOCAL</span>}
+                      {t.source === "demo" && <span style={{ fontSize: 8, color: "#ffaa00", padding: "1px 5px", background: "#ffaa0012", borderRadius: 3 }}>DEMO</span>}
+                    </div>
                   </td>
                   <td style={{ padding: "7px", color: "#888" }}>{t.artist}</td>
                   <td style={{ padding: "7px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace", color: "#aaa" }}>{t.bpm}</td>
@@ -115,6 +143,7 @@ export default function TrackLibrary() {
                       ))}
                     </div>
                   </td>
+                  <td style={{ padding: "7px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace", color: "#666", fontSize: 10 }}>{formatTime(t.duration)}</td>
                   <td style={{ padding: "7px", textAlign: "center", color: "#666", fontSize: 10 }}>{t.genre}</td>
                   <td style={{ padding: "7px", textAlign: "center" }}>
                     <div style={{ display: "flex", justifyContent: "center", gap: 3 }}>

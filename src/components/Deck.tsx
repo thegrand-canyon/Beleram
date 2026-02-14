@@ -29,15 +29,17 @@ interface DeckProps {
   synced: boolean;
   setSynced: (s: boolean) => void;
   otherBpm: number;
+  onTrackDrop?: (trackId: string) => void;
 }
 
 export default function Deck({
   side, track, playing, setPlaying, bpm, setBpm,
   position, setPosition, volume, setVolume, eq, setEq,
-  loop, setLoop, otherTrack, synced, setSynced, otherBpm,
+  loop, setLoop, otherTrack, synced, setSynced, otherBpm, onTrackDrop,
 }: DeckProps) {
   const color = side === "A" ? "#00f0ff" : "#ff6ec7";
   const { getEngine } = useAudioEngine();
+  const [dragOver, setDragOver] = useState(false);
   const waveformRef = useRef<number[]>(generateFakeWaveform(track ? parseInt(track.id) : 0));
   const [vuLevel, setVuLevel] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -104,14 +106,57 @@ export default function Deck({
 
   const keyCompat = track && otherTrack && COMPATIBLE_KEYS[track.key]?.includes(otherTrack.key);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("application/beleram-track-id")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const trackId = e.dataTransfer.getData("application/beleram-track-id");
+    if (trackId && onTrackDrop) {
+      onTrackDrop(trackId);
+    }
+  }, [onTrackDrop]);
+
   return (
-    <div style={{
-      flex: 1, background: "linear-gradient(180deg, rgba(20,20,35,0.95), rgba(12,12,25,0.98))",
-      borderRadius: 14, padding: 16, border: `1px solid ${color}15`,
-      boxShadow: `inset 0 1px 0 ${color}08, 0 4px 30px rgba(0,0,0,0.3)`,
-      display: "flex", flexDirection: "column", gap: 10, position: "relative", overflow: "hidden",
-    }}>
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      style={{
+        flex: 1, background: dragOver
+          ? `linear-gradient(180deg, ${color}15, ${color}08)`
+          : "linear-gradient(180deg, rgba(20,20,35,0.95), rgba(12,12,25,0.98))",
+        borderRadius: 14, padding: 16,
+        border: dragOver ? `2px solid ${color}66` : `1px solid ${color}15`,
+        boxShadow: dragOver ? `0 0 30px ${color}22, inset 0 0 20px ${color}08` : `inset 0 1px 0 ${color}08, 0 4px 30px rgba(0,0,0,0.3)`,
+        display: "flex", flexDirection: "column", gap: 10, position: "relative", overflow: "hidden",
+        transition: "all 0.15s ease",
+      }}
+    >
       <div style={{ position: "absolute", top: -50, [side === "A" ? "left" : "right"]: -50, width: 180, height: 180, borderRadius: "50%", background: `radial-gradient(circle, ${color}08, transparent 70%)`, pointerEvents: "none" }} />
+
+      {dragOver && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 10, borderRadius: 14,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: `${color}15`, backdropFilter: "blur(2px)",
+          pointerEvents: "none",
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color, letterSpacing: 2, textTransform: "uppercase" }}>
+            Drop to load Deck {side}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

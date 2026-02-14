@@ -227,6 +227,15 @@ export default function BeleramDJ() {
     [processFile, store, handleFirstInteraction]
   );
 
+  // Track drag-to-deck handler
+  const handleTrackDropToDeck = useCallback(
+    (trackId: string, deck: "A" | "B") => {
+      const track = useDJStore.getState().tracks.find((t) => t.id === trackId);
+      if (track) store.loadTrack(track, deck);
+    },
+    [store]
+  );
+
   return (
     <div
       onClick={handleFirstInteraction}
@@ -273,6 +282,7 @@ export default function BeleramDJ() {
             volume={store.volA} setVolume={store.setVolA} eq={store.eqA} setEq={store.setEqA}
             loop={store.loopA} setLoop={store.setLoopA} otherTrack={store.trackB}
             synced={store.syncA} setSynced={store.setSyncA} otherBpm={store.bpmB}
+            onTrackDrop={(id) => handleTrackDropToDeck(id, "A")}
           />
 
           {/* Center: Crossfader + Auto DJ */}
@@ -287,6 +297,7 @@ export default function BeleramDJ() {
             volume={store.volB} setVolume={store.setVolB} eq={store.eqB} setEq={store.setEqB}
             loop={store.loopB} setLoop={store.setLoopB} otherTrack={store.trackA}
             synced={store.syncB} setSynced={store.setSyncB} otherBpm={store.bpmA}
+            onTrackDrop={(id) => handleTrackDropToDeck(id, "B")}
           />
         </div>
 
