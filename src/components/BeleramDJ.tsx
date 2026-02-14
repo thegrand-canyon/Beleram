@@ -53,10 +53,12 @@ export default function BeleramDJ() {
     const engine = getEngine();
     const deck = engine.deckA;
     if (store.trackA?.audioBuffer && store.playingA && !deck.playing) {
-      if (!deck.buffer || deck.buffer !== store.trackA.audioBuffer) {
-        deck.loadBuffer(store.trackA.audioBuffer);
-      }
-      deck.play();
+      engine.resume().then(() => {
+        if (!deck.buffer || deck.buffer !== store.trackA!.audioBuffer) {
+          deck.loadBuffer(store.trackA!.audioBuffer!);
+        }
+        deck.play();
+      });
     } else if (!store.playingA && deck.playing) {
       deck.pause();
     }
@@ -67,10 +69,12 @@ export default function BeleramDJ() {
     const engine = getEngine();
     const deck = engine.deckB;
     if (store.trackB?.audioBuffer && store.playingB && !deck.playing) {
-      if (!deck.buffer || deck.buffer !== store.trackB.audioBuffer) {
-        deck.loadBuffer(store.trackB.audioBuffer);
-      }
-      deck.play();
+      engine.resume().then(() => {
+        if (!deck.buffer || deck.buffer !== store.trackB!.audioBuffer) {
+          deck.loadBuffer(store.trackB!.audioBuffer!);
+        }
+        deck.play();
+      });
     } else if (!store.playingB && deck.playing) {
       deck.pause();
     }

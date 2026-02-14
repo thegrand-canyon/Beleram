@@ -101,6 +101,7 @@ export default function TrackLibrary() {
                   <td style={{ padding: "7px 10px", fontWeight: 600, color: "#ddd" }}>
                     {t.title}
                     {t.source === "local" && <span style={{ fontSize: 8, color: "#00f0ff", marginLeft: 6, padding: "1px 5px", background: "#00f0ff15", borderRadius: 3 }}>LOCAL</span>}
+                    {t.source === "demo" && <span style={{ fontSize: 8, color: "#ffaa00", marginLeft: 6, padding: "1px 5px", background: "#ffaa0012", borderRadius: 3 }}>DEMO</span>}
                   </td>
                   <td style={{ padding: "7px", color: "#888" }}>{t.artist}</td>
                   <td style={{ padding: "7px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace", color: "#aaa" }}>{t.bpm}</td>

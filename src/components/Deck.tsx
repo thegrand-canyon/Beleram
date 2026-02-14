@@ -132,8 +132,16 @@ export default function Deck({
 
       {track ? (
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#eee" }}>{track.title}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#eee" }}>{track.title}</div>
+            {!hasRealAudio && (
+              <span style={{ fontSize: 8, color: "#ffaa00", padding: "1px 5px", background: "#ffaa0015", borderRadius: 3, fontWeight: 700, border: "1px solid #ffaa0022" }}>DEMO</span>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: "#8888aa", marginTop: 2 }}>{track.artist} · {track.genre}</div>
+          {!hasRealAudio && (
+            <div style={{ fontSize: 9, color: "#665522", marginTop: 3 }}>Upload your own audio for real playback</div>
+          )}
           <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
             {[`${bpm} BPM`, `KEY: ${track.key}`, `⚡ ${track.energy}/10`].map((t, i) => (
               <span key={i} style={{ fontSize: 10, color: i === 0 ? color : "#aaa", fontFamily: "'JetBrains Mono', monospace", background: i === 0 ? `${color}11` : "rgba(255,255,255,0.04)", padding: "2px 7px", borderRadius: 4 }}>{t}</span>
@@ -141,7 +149,7 @@ export default function Deck({
           </div>
         </div>
       ) : (
-        <div style={{ padding: "12px 0", textAlign: "center", color: "#555", fontSize: 12 }}>Load a track or use Auto DJ ↓</div>
+        <div style={{ padding: "12px 0", textAlign: "center", color: "#555", fontSize: 12 }}>Upload audio files and load a track ↓</div>
       )}
 
       <div style={{ position: "relative" }}>
