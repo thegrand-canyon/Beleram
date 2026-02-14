@@ -6,6 +6,8 @@ interface DJStore {
   // Library
   tracks: Track[];
   addTrack: (track: Track) => void;
+  removeTrack: (id: string) => void;
+  moveTrack: (idx: number, dir: number) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 
@@ -88,6 +90,19 @@ export const useDJStore = create<DJStore>((set, get) => ({
   // Library
   tracks: DEMO_TRACKS,
   addTrack: (track) => set((s) => ({ tracks: [...s.tracks, track] })),
+  removeTrack: (id) =>
+    set((s) => ({
+      tracks: s.tracks.filter((t) => t.id !== id),
+      queue: s.queue.filter((t) => t.id !== id),
+    })),
+  moveTrack: (idx, dir) =>
+    set((s) => {
+      const newTracks = [...s.tracks];
+      const swapIdx = idx + dir;
+      if (swapIdx < 0 || swapIdx >= newTracks.length) return s;
+      [newTracks[idx], newTracks[swapIdx]] = [newTracks[swapIdx], newTracks[idx]];
+      return { tracks: newTracks };
+    }),
   searchQuery: "",
   setSearchQuery: (q) => set({ searchQuery: q }),
 

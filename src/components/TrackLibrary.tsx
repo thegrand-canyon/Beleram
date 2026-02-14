@@ -9,13 +9,14 @@ import { useDJStore } from "@/stores/djStore";
 
 export default function TrackLibrary() {
   const {
-    tracks, addTrack, searchQuery, setSearchQuery,
+    tracks, addTrack, removeTrack, moveTrack, searchQuery, setSearchQuery,
     queue, addToQueue, removeFromQueue,
     trackA, trackB, loadTrack,
     showAddTrack, setShowAddTrack,
   } = useDJStore();
 
   const [newTrack, setNewTrack] = useState({ title: "", artist: "", bpm: 128, key: "Am", genre: "House", energy: 5 });
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [hideDemos, setHideDemos] = useState(false);
 
   const filtered = filterTracks(tracks, searchQuery).filter((t) => !hideDemos || t.source !== "demo");
@@ -40,9 +41,29 @@ export default function TrackLibrary() {
     setShowAddTrack(false);
   };
 
-  const handleDragStart = (e: React.DragEvent, track: Track) => {
+  const handleDragStart = (e: React.DragEvent, track: Track, idx: number) => {
     e.dataTransfer.setData("application/beleram-track-id", track.id);
-    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData("application/beleram-track-idx", String(idx));
+    e.dataTransfer.effectAllowed = "copyMove";
+    setDragIdx(idx);
+  };
+
+  const handleDragOverRow = (e: React.DragEvent, targetIdx: number) => {
+    if (dragIdx === null || dragIdx === targetIdx) return;
+    e.preventDefault();
+    // Find the real indices in the full tracks array
+    const dragTrack = filtered[dragIdx];
+    const targetTrack = filtered[targetIdx];
+    if (!dragTrack || !targetTrack) return;
+    const realDragIdx = tracks.indexOf(dragTrack);
+    const realTargetIdx = tracks.indexOf(targetTrack);
+    if (realDragIdx === -1 || realTargetIdx === -1) return;
+    moveTrack(realDragIdx, realTargetIdx - realDragIdx);
+    setDragIdx(targetIdx);
+  };
+
+  const handleDragEnd = () => {
+    setDragIdx(null);
   };
 
   return (
@@ -105,20 +126,24 @@ export default function TrackLibrary() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((t) => {
+            {filtered.map((t, idx) => {
               const isKeyCompat = currentKey && COMPATIBLE_KEYS[currentKey]?.includes(t.key);
               const isLoaded = t.id === trackA?.id || t.id === trackB?.id;
               const inQueue = queue.find((q) => q.id === t.id);
+              const isDragging = dragIdx === idx;
               return (
                 <tr
                   key={t.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, t)}
+                  onDragStart={(e) => handleDragStart(e, t, idx)}
+                  onDragOver={(e) => handleDragOverRow(e, idx)}
+                  onDragEnd={handleDragEnd}
                   style={{
                     borderBottom: "1px solid rgba(255,255,255,0.02)",
-                    opacity: isLoaded ? 0.5 : 1,
+                    opacity: isDragging ? 0.4 : isLoaded ? 0.5 : 1,
                     background: isLoaded ? "rgba(136,102,255,0.03)" : "transparent",
                     cursor: "grab",
+                    transition: "opacity 0.1s",
                   }}
                   onMouseEnter={(e) => !isLoaded && (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = isLoaded ? "rgba(136,102,255,0.03)" : "transparent")}
@@ -152,6 +177,12 @@ export default function TrackLibrary() {
                       <button onClick={() => inQueue ? removeFromQueue(t.id) : addToQueue(t)} style={{ padding: "2px 8px", borderRadius: 3, border: `1px solid ${inQueue ? "#ffaa0033" : "rgba(255,255,255,0.08)"}`, background: inQueue ? "#ffaa0015" : "transparent", color: inQueue ? "#ffaa00" : "#666", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
                         {inQueue ? "−Q" : "+Q"}
                       </button>
+                      <button
+                        onClick={() => !isLoaded && removeTrack(t.id)}
+                        disabled={isLoaded}
+                        title="Remove track"
+                        style={{ padding: "2px 6px", borderRadius: 3, border: "1px solid #ff336622", background: "transparent", color: isLoaded ? "#33222" : "#ff5566", fontSize: 9, fontWeight: 700, cursor: isLoaded ? "default" : "pointer", opacity: isLoaded ? 0.3 : 1 }}
+                      >✕</button>
                     </div>
                   </td>
                 </tr>
