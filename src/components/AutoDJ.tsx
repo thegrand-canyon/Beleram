@@ -42,6 +42,9 @@ export default function AutoDJPanel() {
       <select value={autoDJMode} onChange={(e) => setAutoDJMode(e.target.value as AutoDJMode)} style={{ width: "100%", padding: "5px 8px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.4)", color: "#aaa", fontSize: 10, outline: "none", fontFamily: "'JetBrains Mono', monospace" }}>
         {AUTO_DJ_MODES.map((m) => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
       </select>
+      <div style={{ fontSize: 8, color: "#555", textAlign: "center", lineHeight: 1.3 }}>
+        {AUTO_DJ_MODES.find((m) => m.id === autoDJMode)?.desc}
+      </div>
       <button onClick={autoDJ ? stopAutoDJ : startAutoDJ} disabled={!autoDJ && queue.length === 0 && !trackA} style={{
         width: "100%", padding: "8px", borderRadius: 6,
         border: `1px solid ${autoDJ ? "#ff336655" : "#00ff8833"}`,

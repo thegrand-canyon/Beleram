@@ -156,56 +156,206 @@ export default function BeleramDJ() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Smooth auto transition crossfader with EQ blending
+  // Auto transition engine — different transition styles per mode
   const transStartTime = useRef<number>(0);
   useEffect(() => {
     if (!store.autoTrans) return;
 
-    // Duration in seconds for the full transition
-    const duration = store.autoDJMode === "party" ? 6 : store.autoDJMode === "chill" ? 20 : store.autoDJMode === "build" ? 12 : 10;
+    const mode = store.autoDJMode;
+    // Duration in seconds
+    const duration = mode === "party" ? 12 : mode === "drop" ? 20 : mode === "long" ? 45 : mode === "echo" ? 18 : 24;
     transStartTime.current = Date.now();
     const startCrossfader = useDJStore.getState().crossfader;
+
+    const finishTransition = (s: ReturnType<typeof useDJStore.getState>) => {
+      s.setAutoTrans(false);
+      s.setTransitionProgress(0);
+      s.setCrossfader(100);
+      s.setEqA({ hi: 50, mid: 50, lo: 50 });
+      s.setEqB({ hi: 50, mid: 50, lo: 50 });
+      s.setVolA(80);
+      s.setVolB(80);
+    };
 
     const interval = setInterval(() => {
       const s = useDJStore.getState();
       const elapsed = (Date.now() - transStartTime.current) / 1000;
-      const rawProgress = Math.min(1, elapsed / duration);
+      const t = Math.min(1, elapsed / duration);
 
-      // Smooth ease-in-out curve (sine)
-      const eased = 0.5 - 0.5 * Math.cos(rawProgress * Math.PI);
-      const crossfaderValue = startCrossfader + (100 - startCrossfader) * eased;
+      if (mode === "smooth") {
+        // ─── SMOOTH BLEND ───
+        // Long gradual crossfade with professional bass-swap technique
+        // Phase 1 (0–30%): Bring in new track with bass/mids cut, only highs
+        // Phase 2 (30–50%): Slowly bring in mids on new track
+        // Phase 3 (50–65%): Bass swap — cut outgoing bass, bring in incoming bass
+        // Phase 4 (65–100%): Fade out outgoing track completely
+        const eased = 0.5 - 0.5 * Math.cos(t * Math.PI);
+        const cf = startCrossfader + (100 - startCrossfader) * eased;
+        s.setCrossfader(cf);
 
-      // EQ transition: gradually cut bass on outgoing deck, boost on incoming
-      // Phase 1 (0-40%): cut incoming bass to avoid mud
-      // Phase 2 (40-60%): swap bass between decks
-      // Phase 3 (60-100%): restore incoming bass, cut outgoing
-      if (rawProgress < 0.4) {
-        // Incoming deck (B): bass cut, gradually restore mids/highs
-        const p = rawProgress / 0.4; // 0-1 within this phase
-        s.setEqB({ hi: 50, mid: Math.round(30 + 20 * p), lo: Math.round(10 + 15 * p) });
-        s.setEqA({ hi: 50, mid: 50, lo: 50 });
-      } else if (rawProgress < 0.6) {
-        // Bass swap zone
-        const p = (rawProgress - 0.4) / 0.2; // 0-1 within this phase
-        s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 40 * p) });
-        s.setEqB({ hi: 50, mid: 50, lo: Math.round(25 + 25 * p) });
+        if (t < 0.3) {
+          const p = t / 0.3;
+          s.setEqB({ hi: Math.round(20 + 30 * p), mid: Math.round(10 + 15 * p), lo: 5 });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.5) {
+          const p = (t - 0.3) / 0.2;
+          s.setEqB({ hi: 50, mid: Math.round(25 + 25 * p), lo: Math.round(5 + 10 * p) });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.65) {
+          const p = (t - 0.5) / 0.15;
+          // Bass swap: smooth sine curve to avoid sudden cut
+          const swapCurve = 0.5 - 0.5 * Math.cos(p * Math.PI);
+          s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 45 * swapCurve) });
+          s.setEqB({ hi: 50, mid: 50, lo: Math.round(15 + 35 * swapCurve) });
+        } else {
+          const p = (t - 0.65) / 0.35;
+          const fadeOut = 0.5 + 0.5 * Math.cos(p * Math.PI);
+          s.setEqA({ hi: Math.round(50 * fadeOut), mid: Math.round(50 * fadeOut), lo: 5 });
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        }
+      } else if (mode === "drop") {
+        // ─── DROP CUT ───
+        // Build tension by filtering outgoing track, then hard-cut to new track
+        // Phase 1 (0–60%): Slowly high-pass outgoing, tease new track quietly
+        // Phase 2 (60–80%): Build tension — cut everything, just hi-hats
+        // Phase 3 (80–85%): Brief silence/drop moment
+        // Phase 4 (85–100%): BANG — snap to new track at full energy
+        if (t < 0.6) {
+          const p = t / 0.6;
+          // Gradually filter outgoing — remove bass and mids
+          s.setEqA({ hi: 50, mid: Math.round(50 - 30 * p), lo: Math.round(50 - 45 * p) });
+          // Tease incoming — very quiet, just highs
+          s.setEqB({ hi: Math.round(15 + 10 * p), mid: 5, lo: 0 });
+          s.setCrossfader(startCrossfader + 20 * p);
+          s.setVolB(Math.round(20 + 15 * p));
+        } else if (t < 0.8) {
+          const p = (t - 0.6) / 0.2;
+          // Tension build — outgoing becomes just hi-hats
+          s.setEqA({ hi: Math.round(40 - 20 * p), mid: Math.round(20 - 15 * p), lo: 5 });
+          // Incoming still teasing
+          s.setEqB({ hi: Math.round(25 + 10 * p), mid: Math.round(5 + 10 * p), lo: 0 });
+          s.setCrossfader(startCrossfader + 20 + 15 * p);
+          s.setVolB(Math.round(35 + 10 * p));
+        } else if (t < 0.85) {
+          // Brief tension moment — pull back both
+          const p = (t - 0.8) / 0.05;
+          s.setEqA({ hi: Math.round(20 - 15 * p), mid: 5, lo: 5 });
+          s.setEqB({ hi: Math.round(35 - 20 * p), mid: Math.round(15 - 10 * p), lo: 0 });
+          s.setVolA(Math.round(80 - 50 * p));
+          s.setVolB(Math.round(45 - 20 * p));
+          s.setCrossfader(startCrossfader + 35 + 5 * p);
+        } else {
+          // DROP! Hard cut to new track
+          const p = (t - 0.85) / 0.15;
+          // Snap crossfader and volume
+          const snap = Math.min(1, p * 3); // Fast snap in first third of this phase
+          s.setCrossfader(startCrossfader + 40 + 60 * snap);
+          s.setVolA(Math.round(30 * (1 - snap)));
+          s.setVolB(80);
+          s.setEqA({ hi: Math.round(5 * (1 - snap)), mid: 5, lo: 5 });
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        }
+      } else if (mode === "long") {
+        // ─── LONG MIX (festival style) ───
+        // Very slow, almost imperceptible blend over ~45 seconds
+        // Gentle volume curves with careful EQ management
+        const eased = t * t * (3 - 2 * t); // smoothstep
+        const cf = startCrossfader + (100 - startCrossfader) * eased;
+        s.setCrossfader(cf);
+
+        if (t < 0.2) {
+          // Introduce incoming track — just a whisper of highs
+          const p = t / 0.2;
+          s.setEqB({ hi: Math.round(10 + 20 * p), mid: Math.round(5 + 10 * p), lo: 0 });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.4) {
+          // Gradually open up incoming mids
+          const p = (t - 0.2) / 0.2;
+          s.setEqB({ hi: Math.round(30 + 10 * p), mid: Math.round(15 + 20 * p), lo: Math.round(5 * p) });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.55) {
+          // Slow bass swap
+          const p = (t - 0.4) / 0.15;
+          const curve = 0.5 - 0.5 * Math.cos(p * Math.PI);
+          s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 40 * curve) });
+          s.setEqB({ hi: 40, mid: 35, lo: Math.round(5 + 45 * curve) });
+        } else if (t < 0.75) {
+          // Bring incoming to full, start pulling outgoing mids
+          const p = (t - 0.55) / 0.2;
+          s.setEqA({ hi: Math.round(50 - 15 * p), mid: Math.round(50 - 15 * p), lo: 10 });
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        } else {
+          // Gentle fade out of outgoing
+          const p = (t - 0.75) / 0.25;
+          const fade = 0.5 + 0.5 * Math.cos(p * Math.PI);
+          s.setEqA({ hi: Math.round(35 * fade), mid: Math.round(35 * fade), lo: Math.round(10 * fade) });
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        }
+      } else if (mode === "echo") {
+        // ─── ECHO OUT ───
+        // Outgoing track fades with echo/filter effect, new track rises from silence
+        // Phase 1 (0–30%): Bring in new track's highs while outgoing still strong
+        // Phase 2 (30–50%): Cut outgoing bass, start EQ filtering (simulated echo)
+        // Phase 3 (50–75%): Outgoing gets progressively more filtered, volume drops
+        // Phase 4 (75–100%): New track takes over completely
+        if (t < 0.3) {
+          const p = t / 0.3;
+          s.setCrossfader(startCrossfader + 15 * p);
+          s.setEqB({ hi: Math.round(15 + 20 * p), mid: Math.round(5 + 10 * p), lo: 0 });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.5) {
+          const p = (t - 0.3) / 0.2;
+          s.setCrossfader(startCrossfader + 15 + 20 * p);
+          // Simulate echo-out: progressively cut mids/bass, boost highs briefly
+          s.setEqA({ hi: Math.round(50 + 10 * Math.sin(p * Math.PI)), mid: Math.round(50 - 25 * p), lo: Math.round(50 - 40 * p) });
+          s.setEqB({ hi: Math.round(35 + 15 * p), mid: Math.round(15 + 20 * p), lo: Math.round(5 + 15 * p) });
+        } else if (t < 0.75) {
+          const p = (t - 0.5) / 0.25;
+          s.setCrossfader(startCrossfader + 35 + 35 * p);
+          // Outgoing: heavy filter, dropping volume
+          s.setEqA({ hi: Math.round(60 - 40 * p), mid: Math.round(25 - 20 * p), lo: Math.round(10 - 8 * p) });
+          s.setVolA(Math.round(80 - 40 * p));
+          // Incoming: opening up
+          const curve = 0.5 - 0.5 * Math.cos(p * Math.PI);
+          s.setEqB({ hi: 50, mid: Math.round(35 + 15 * curve), lo: Math.round(20 + 30 * curve) });
+        } else {
+          const p = (t - 0.75) / 0.25;
+          s.setCrossfader(startCrossfader + 70 + 30 * p);
+          // Outgoing fades to nothing
+          const fade = 1 - p;
+          s.setEqA({ hi: Math.round(20 * fade), mid: Math.round(5 * fade), lo: 2 });
+          s.setVolA(Math.round(40 * fade * fade));
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        }
       } else {
-        // Outgoing deck (A): fade out
-        const p = (rawProgress - 0.6) / 0.4; // 0-1 within this phase
-        s.setEqA({ hi: Math.round(50 - 30 * p), mid: Math.round(50 - 30 * p), lo: Math.round(10 - 10 * p) });
-        s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        // ─── QUICK MIX (party) ───
+        // Fast but still musical — 12 seconds with punchy bass swap
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease-in-out quad
+        const cf = startCrossfader + (100 - startCrossfader) * eased;
+        s.setCrossfader(cf);
+
+        if (t < 0.25) {
+          const p = t / 0.25;
+          s.setEqB({ hi: Math.round(30 + 20 * p), mid: Math.round(20 + 15 * p), lo: 10 });
+          s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        } else if (t < 0.5) {
+          const p = (t - 0.25) / 0.25;
+          // Quick bass swap
+          const swapCurve = 0.5 - 0.5 * Math.cos(p * Math.PI);
+          s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 45 * swapCurve) });
+          s.setEqB({ hi: 50, mid: Math.round(35 + 15 * swapCurve), lo: Math.round(10 + 40 * swapCurve) });
+        } else {
+          const p = (t - 0.5) / 0.5;
+          const fadeOut = Math.cos(p * Math.PI / 2);
+          s.setEqA({ hi: Math.round(50 * fadeOut), mid: Math.round(50 * fadeOut), lo: 5 });
+          s.setEqB({ hi: 50, mid: 50, lo: 50 });
+        }
       }
 
-      if (rawProgress >= 1) {
-        s.setAutoTrans(false);
-        s.setTransitionProgress(0);
-        s.setCrossfader(100);
-        // Reset EQs
-        s.setEqA({ hi: 50, mid: 50, lo: 50 });
-        s.setEqB({ hi: 50, mid: 50, lo: 50 });
+      if (t >= 1) {
+        finishTransition(s);
       } else {
-        s.setTransitionProgress(crossfaderValue);
-        s.setCrossfader(crossfaderValue);
+        s.setTransitionProgress(t * 100);
       }
     }, 50);
     return () => clearInterval(interval);
@@ -216,7 +366,11 @@ export default function BeleramDJ() {
     if (!store.autoDJ) return;
     const interval = setInterval(() => {
       const s = useDJStore.getState();
-      if (s.trackA && s.posA > s.trackA.duration * 0.75 && !s.autoTrans && s.crossfader < 50) {
+      // How early to load next track depends on mode (longer transitions need earlier load)
+      const triggerPoint = s.autoDJMode === "long" ? 0.55 : s.autoDJMode === "smooth" ? 0.65 : 0.70;
+      const leadIn = s.autoDJMode === "long" ? 4000 : s.autoDJMode === "drop" ? 3000 : 2000;
+
+      if (s.trackA && s.posA > s.trackA.duration * triggerPoint && !s.autoTrans && s.crossfader < 50) {
         if (s.queue.length > 0 && !s.trackB) {
           const next = s.shiftQueue();
           if (next) {
@@ -225,12 +379,13 @@ export default function BeleramDJ() {
             s.setPosB(0);
             s.setPlayingB(true);
             s.setSyncB(true);
-            s.setAutoDJStatus(`Loading "${next.title}" into Deck B...`);
+            s.setAutoDJStatus(`Cueing "${next.title}" into Deck B...`);
             setTimeout(() => {
               const ss = useDJStore.getState();
               ss.setAutoTrans(true);
-              ss.setAutoDJStatus(`Transitioning to "${next.title}"...`);
-            }, 2000);
+              const modeLabel = ss.autoDJMode === "drop" ? "Drop cut" : ss.autoDJMode === "long" ? "Long mix" : ss.autoDJMode === "echo" ? "Echo fade" : ss.autoDJMode === "party" ? "Quick mix" : "Smooth blend";
+              ss.setAutoDJStatus(`${modeLabel} → "${next.title}"`);
+            }, leadIn);
           }
         }
       }
@@ -245,6 +400,7 @@ export default function BeleramDJ() {
         s.setPosB(0);
         s.setCrossfader(0);
         s.setSyncB(false);
+        s.setVolA(80);
         s.setAutoDJStatus(`Now playing: "${title}"`);
       }
     }, 500);

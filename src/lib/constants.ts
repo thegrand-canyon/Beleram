@@ -43,8 +43,9 @@ export const TIPS = [
 ];
 
 export const AUTO_DJ_MODES = [
-  { id: "smooth" as const, label: "Smooth Flow", desc: "Gradual BPM & energy changes, key-matched", icon: "🌊" },
-  { id: "party" as const, label: "Party Mode", desc: "High energy, fast transitions", icon: "🎉" },
-  { id: "chill" as const, label: "Chill Vibes", desc: "Low energy, long smooth fades", icon: "🌙" },
-  { id: "build" as const, label: "Build Up", desc: "Gradually increases energy over time", icon: "📈" },
+  { id: "smooth" as const, label: "Smooth Blend", desc: "16-bar gradual crossfade with EQ bass swap", icon: "🌊" },
+  { id: "drop" as const, label: "Drop Cut", desc: "Build tension then hard-cut on the drop", icon: "💥" },
+  { id: "long" as const, label: "Long Mix", desc: "Slow 64-bar blend like a festival DJ", icon: "🎧" },
+  { id: "echo" as const, label: "Echo Out", desc: "Echo-fade outgoing track while new one rises", icon: "🌀" },
+  { id: "party" as const, label: "Quick Mix", desc: "Fast 8-bar transition, keeps the energy up", icon: "🎉" },
 ];
