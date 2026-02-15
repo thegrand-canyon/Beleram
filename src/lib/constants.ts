@@ -43,6 +43,7 @@ export const TIPS = [
 ];
 
 export const AUTO_DJ_MODES = [
+  { id: "smart" as const, label: "Smart Mix", desc: "Listens to the music — transitions on breakdowns and drops", icon: "🧠" },
   { id: "smooth" as const, label: "Smooth Blend", desc: "16-bar gradual crossfade with EQ bass swap", icon: "🌊" },
   { id: "drop" as const, label: "Drop Cut", desc: "Build tension then hard-cut on the drop", icon: "💥" },
   { id: "long" as const, label: "Long Mix", desc: "Slow 64-bar blend like a festival DJ", icon: "🎧" },

@@ -177,7 +177,7 @@ export const useDJStore = create<DJStore>((set, get) => ({
   // Auto DJ
   autoDJ: false,
   setAutoDJ: (v) => set({ autoDJ: v }),
-  autoDJMode: "smooth",
+  autoDJMode: "smart",
   setAutoDJMode: (m) => set({ autoDJMode: m }),
   autoDJStatus: "",
   setAutoDJStatus: (s) => set({ autoDJStatus: s }),

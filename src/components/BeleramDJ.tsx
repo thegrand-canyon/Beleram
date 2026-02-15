@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useDJStore } from "@/stores/djStore";
 import { useAudioEngine } from "@/hooks/useAudioEngine";
 import { useFileUpload } from "@/hooks/useFileUpload";
+import { SmartTransition } from "@/audio/SmartTransition";
 import Header from "./Header";
 import TipsBar from "./TipsBar";
 import Deck from "./Deck";
@@ -158,13 +159,14 @@ export default function BeleramDJ() {
 
   // Auto transition engine — different transition styles per mode
   const transStartTime = useRef<number>(0);
+  const smartTransRef = useRef<SmartTransition | null>(null);
   useEffect(() => {
-    if (!store.autoTrans) return;
+    if (!store.autoTrans) {
+      smartTransRef.current = null;
+      return;
+    }
 
     const mode = store.autoDJMode;
-    // Duration in seconds
-    const duration = mode === "party" ? 12 : mode === "drop" ? 20 : mode === "long" ? 45 : mode === "echo" ? 18 : 24;
-    transStartTime.current = Date.now();
     const startCrossfader = useDJStore.getState().crossfader;
 
     const finishTransition = (s: ReturnType<typeof useDJStore.getState>) => {
@@ -175,7 +177,41 @@ export default function BeleramDJ() {
       s.setEqB({ hi: 50, mid: 50, lo: 50 });
       s.setVolA(80);
       s.setVolB(80);
+      smartTransRef.current = null;
     };
+
+    // ─── SMART MODE: beat-aware, energy-reactive ───
+    if (mode === "smart") {
+      const engine = getEngine();
+      const bpm = useDJStore.getState().bpmA || 128;
+      smartTransRef.current = new SmartTransition(engine.deckA, engine.deckB, bpm, startCrossfader);
+
+      const interval = setInterval(() => {
+        const s = useDJStore.getState();
+        const smart = smartTransRef.current;
+        if (!smart) return;
+
+        const state = smart.tick();
+
+        s.setCrossfader(state.crossfader);
+        s.setEqA(state.eqA);
+        s.setEqB(state.eqB);
+        s.setVolA(state.volA);
+        s.setVolB(state.volB);
+        s.setTransitionProgress(state.progress);
+        s.setAutoDJStatus(`${state.statusText}`);
+
+        if (state.phase === "done") {
+          finishTransition(s);
+        }
+      }, 50);
+      return () => clearInterval(interval);
+    }
+
+    // ─── TIMED MODES ───
+    // Duration in seconds
+    const duration = mode === "party" ? 12 : mode === "drop" ? 20 : mode === "long" ? 45 : mode === "echo" ? 18 : 24;
+    transStartTime.current = Date.now();
 
     const interval = setInterval(() => {
       const s = useDJStore.getState();
@@ -359,7 +395,7 @@ export default function BeleramDJ() {
       }
     }, 50);
     return () => clearInterval(interval);
-  }, [store.autoTrans, store.autoDJMode]);
+  }, [store.autoTrans, store.autoDJMode, getEngine]);
 
   // Auto DJ engine
   useEffect(() => {
@@ -367,8 +403,8 @@ export default function BeleramDJ() {
     const interval = setInterval(() => {
       const s = useDJStore.getState();
       // How early to load next track depends on mode (longer transitions need earlier load)
-      const triggerPoint = s.autoDJMode === "long" ? 0.55 : s.autoDJMode === "smooth" ? 0.65 : 0.70;
-      const leadIn = s.autoDJMode === "long" ? 4000 : s.autoDJMode === "drop" ? 3000 : 2000;
+      const triggerPoint = s.autoDJMode === "smart" ? 0.50 : s.autoDJMode === "long" ? 0.55 : s.autoDJMode === "smooth" ? 0.65 : 0.70;
+      const leadIn = s.autoDJMode === "smart" ? 3000 : s.autoDJMode === "long" ? 4000 : s.autoDJMode === "drop" ? 3000 : 2000;
 
       if (s.trackA && s.posA > s.trackA.duration * triggerPoint && !s.autoTrans && s.crossfader < 50) {
         if (s.queue.length > 0 && !s.trackB) {
@@ -383,7 +419,7 @@ export default function BeleramDJ() {
             setTimeout(() => {
               const ss = useDJStore.getState();
               ss.setAutoTrans(true);
-              const modeLabel = ss.autoDJMode === "drop" ? "Drop cut" : ss.autoDJMode === "long" ? "Long mix" : ss.autoDJMode === "echo" ? "Echo fade" : ss.autoDJMode === "party" ? "Quick mix" : "Smooth blend";
+              const modeLabel = ss.autoDJMode === "smart" ? "Smart mix" : ss.autoDJMode === "drop" ? "Drop cut" : ss.autoDJMode === "long" ? "Long mix" : ss.autoDJMode === "echo" ? "Echo fade" : ss.autoDJMode === "party" ? "Quick mix" : "Smooth blend";
               ss.setAutoDJStatus(`${modeLabel} → "${next.title}"`);
             }, leadIn);
           }

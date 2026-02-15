@@ -30,5 +30,5 @@ export interface DeckState {
   synced: boolean;
 }
 
-export type AutoDJMode = "smooth" | "drop" | "long" | "echo" | "party";
+export type AutoDJMode = "smart" | "smooth" | "drop" | "long" | "echo" | "party";
 export type BottomTab = "library" | "queue" | "spotify" | "guide";
