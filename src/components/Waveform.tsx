@@ -37,6 +37,7 @@ export default function Waveform({ data, progress, color, playing, onSeek }: Wav
   }, [data, progress, color, playing]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.stopPropagation();
     if (!onSeek) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const p = (e.clientX - rect.left) / rect.width;
@@ -49,6 +50,7 @@ export default function Waveform({ data, progress, color, playing, onSeek }: Wav
       width={600}
       height={55}
       onClick={handleClick}
+      onDragStart={(e) => e.preventDefault()}
       style={{ width: "100%", height: 55, borderRadius: 6, background: "rgba(0,0,0,0.4)", cursor: onSeek ? "pointer" : "default" }}
     />
   );

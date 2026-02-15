@@ -156,22 +156,58 @@ export default function BeleramDJ() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Auto transition crossfader
+  // Smooth auto transition crossfader with EQ blending
+  const transStartTime = useRef<number>(0);
   useEffect(() => {
     if (!store.autoTrans) return;
-    const speed = store.autoDJMode === "party" ? 2 : store.autoDJMode === "chill" ? 0.4 : 0.8;
+
+    // Duration in seconds for the full transition
+    const duration = store.autoDJMode === "party" ? 6 : store.autoDJMode === "chill" ? 20 : store.autoDJMode === "build" ? 12 : 10;
+    transStartTime.current = Date.now();
+    const startCrossfader = useDJStore.getState().crossfader;
+
     const interval = setInterval(() => {
       const s = useDJStore.getState();
-      const next = s.crossfader + speed;
-      if (next >= 100) {
+      const elapsed = (Date.now() - transStartTime.current) / 1000;
+      const rawProgress = Math.min(1, elapsed / duration);
+
+      // Smooth ease-in-out curve (sine)
+      const eased = 0.5 - 0.5 * Math.cos(rawProgress * Math.PI);
+      const crossfaderValue = startCrossfader + (100 - startCrossfader) * eased;
+
+      // EQ transition: gradually cut bass on outgoing deck, boost on incoming
+      // Phase 1 (0-40%): cut incoming bass to avoid mud
+      // Phase 2 (40-60%): swap bass between decks
+      // Phase 3 (60-100%): restore incoming bass, cut outgoing
+      if (rawProgress < 0.4) {
+        // Incoming deck (B): bass cut, gradually restore mids/highs
+        const p = rawProgress / 0.4; // 0-1 within this phase
+        s.setEqB({ hi: 50, mid: Math.round(30 + 20 * p), lo: Math.round(10 + 15 * p) });
+        s.setEqA({ hi: 50, mid: 50, lo: 50 });
+      } else if (rawProgress < 0.6) {
+        // Bass swap zone
+        const p = (rawProgress - 0.4) / 0.2; // 0-1 within this phase
+        s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 40 * p) });
+        s.setEqB({ hi: 50, mid: 50, lo: Math.round(25 + 25 * p) });
+      } else {
+        // Outgoing deck (A): fade out
+        const p = (rawProgress - 0.6) / 0.4; // 0-1 within this phase
+        s.setEqA({ hi: Math.round(50 - 30 * p), mid: Math.round(50 - 30 * p), lo: Math.round(10 - 10 * p) });
+        s.setEqB({ hi: 50, mid: 50, lo: 50 });
+      }
+
+      if (rawProgress >= 1) {
         s.setAutoTrans(false);
         s.setTransitionProgress(0);
         s.setCrossfader(100);
+        // Reset EQs
+        s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        s.setEqB({ hi: 50, mid: 50, lo: 50 });
       } else {
-        s.setTransitionProgress(next);
-        s.setCrossfader(next);
+        s.setTransitionProgress(crossfaderValue);
+        s.setCrossfader(crossfaderValue);
       }
-    }, 80);
+    }, 50);
     return () => clearInterval(interval);
   }, [store.autoTrans, store.autoDJMode]);
 

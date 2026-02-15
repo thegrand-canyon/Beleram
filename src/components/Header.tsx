@@ -11,7 +11,7 @@ export default function Header() {
         <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg, #8866ff, #ff6ec7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🎧</div>
         <div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: 2, background: "linear-gradient(90deg, #00f0ff, #8866ff, #ff6ec7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>BELERAM</div>
-          <div style={{ fontSize: 8, color: "#555", letterSpacing: 3, textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>INTELLIGENT DJ STUDIO</div>
+
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>

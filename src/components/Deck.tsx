@@ -94,8 +94,10 @@ export default function Deck({
     const time = progress * track.duration;
     if (hasRealAudio) {
       const engine = getEngine();
-      const deck = side === "A" ? engine.deckA : engine.deckB;
-      deck.seek(time);
+      engine.resume().then(() => {
+        const deck = side === "A" ? engine.deckA : engine.deckB;
+        deck.seek(time);
+      });
     }
     setPosition(time);
   }, [track, hasRealAudio, side, getEngine, setPosition]);
