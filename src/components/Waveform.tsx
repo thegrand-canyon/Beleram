@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 
 interface WaveformProps {
   data: number[];
@@ -36,24 +36,31 @@ export default function Waveform({ data, progress, color, playing, onSeek }: Wav
     ctx.shadowBlur = 0;
   }, [data, progress, color, playing]);
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Use pointerDown instead of click — fires before drag events can intercept
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
     if (!onSeek) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const p = (e.clientX - rect.left) / rect.width;
     onSeek(Math.max(0, Math.min(1, p)));
-  };
+  }, [onSeek]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={600}
-      height={55}
-      onClick={handleClick}
-      onMouseDown={(e) => e.stopPropagation()}
+    <div
+      onPointerDown={handlePointerDown}
       onDragStart={(e) => e.preventDefault()}
-      style={{ width: "100%", height: 55, borderRadius: 6, background: "rgba(0,0,0,0.4)", cursor: onSeek ? "pointer" : "default", position: "relative", zIndex: 2 }}
-    />
+      style={{
+        position: "relative", zIndex: 2, borderRadius: 6, overflow: "hidden",
+        cursor: onSeek ? "pointer" : "default", touchAction: "none",
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={55}
+        style={{ width: "100%", height: 55, display: "block", background: "rgba(0,0,0,0.4)", pointerEvents: "none" }}
+      />
+    </div>
   );
 }
