@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Track } from "@/types";
 import { useDJStore } from "@/stores/djStore";
 
@@ -36,7 +36,7 @@ export default function SpotifyBrowser() {
     }
   }, []);
 
-  useState(() => { checkConnection(); });
+  useEffect(() => { checkConnection(); }, [checkConnection]);
 
   const search = async () => {
     if (!query.trim()) return;

@@ -28,6 +28,9 @@ interface DJStore {
   volA: number;
   eqA: EQState;
   loopA: boolean;
+  loopStartA: number | null;
+  loopEndA: number | null;
+  hotCuesA: (number | null)[];
   syncA: boolean;
   setTrackA: (t: Track | null) => void;
   setPlayingA: (p: boolean) => void;
@@ -36,6 +39,8 @@ interface DJStore {
   setVolA: (v: number) => void;
   setEqA: (eq: EQState) => void;
   setLoopA: (l: boolean) => void;
+  setLoopRegionA: (start: number | null, end: number | null) => void;
+  setHotCueA: (idx: number, pos: number | null) => void;
   setSyncA: (s: boolean) => void;
 
   // Deck B
@@ -46,6 +51,9 @@ interface DJStore {
   volB: number;
   eqB: EQState;
   loopB: boolean;
+  loopStartB: number | null;
+  loopEndB: number | null;
+  hotCuesB: (number | null)[];
   syncB: boolean;
   setTrackB: (t: Track | null) => void;
   setPlayingB: (p: boolean) => void;
@@ -54,6 +62,8 @@ interface DJStore {
   setVolB: (v: number) => void;
   setEqB: (eq: EQState) => void;
   setLoopB: (l: boolean) => void;
+  setLoopRegionB: (start: number | null, end: number | null) => void;
+  setHotCueB: (idx: number, pos: number | null) => void;
   setSyncB: (s: boolean) => void;
 
   // Mixer
@@ -140,6 +150,9 @@ export const useDJStore = create<DJStore>((set, get) => ({
   volA: 80,
   eqA: { hi: 50, mid: 50, lo: 50 },
   loopA: false,
+  loopStartA: null,
+  loopEndA: null,
+  hotCuesA: [null, null, null, null],
   syncA: false,
   setTrackA: (t) => set({ trackA: t }),
   setPlayingA: (p) => set({ playingA: p }),
@@ -148,6 +161,12 @@ export const useDJStore = create<DJStore>((set, get) => ({
   setVolA: (v) => set({ volA: v }),
   setEqA: (eq) => set({ eqA: eq }),
   setLoopA: (l) => set({ loopA: l }),
+  setLoopRegionA: (start, end) => set({ loopStartA: start, loopEndA: end }),
+  setHotCueA: (idx, pos) => set((s) => {
+    const cues = [...s.hotCuesA];
+    cues[idx] = pos;
+    return { hotCuesA: cues };
+  }),
   setSyncA: (s) => set({ syncA: s }),
 
   // Deck B
@@ -158,6 +177,9 @@ export const useDJStore = create<DJStore>((set, get) => ({
   volB: 80,
   eqB: { hi: 50, mid: 50, lo: 50 },
   loopB: false,
+  loopStartB: null,
+  loopEndB: null,
+  hotCuesB: [null, null, null, null],
   syncB: false,
   setTrackB: (t) => set({ trackB: t }),
   setPlayingB: (p) => set({ playingB: p }),
@@ -166,6 +188,12 @@ export const useDJStore = create<DJStore>((set, get) => ({
   setVolB: (v) => set({ volB: v }),
   setEqB: (eq) => set({ eqB: eq }),
   setLoopB: (l) => set({ loopB: l }),
+  setLoopRegionB: (start, end) => set({ loopStartB: start, loopEndB: end }),
+  setHotCueB: (idx, pos) => set((s) => {
+    const cues = [...s.hotCuesB];
+    cues[idx] = pos;
+    return { hotCuesB: cues };
+  }),
   setSyncB: (s) => set({ syncB: s }),
 
   // Mixer
@@ -197,9 +225,9 @@ export const useDJStore = create<DJStore>((set, get) => ({
   // Load track
   loadTrack: (track, deck) => {
     if (deck === "A") {
-      set({ trackA: track, bpmA: track.bpm, posA: 0, playingA: false });
+      set({ trackA: track, bpmA: track.bpm, posA: 0, playingA: false, hotCuesA: [null, null, null, null], loopStartA: null, loopEndA: null, loopA: false });
     } else {
-      set({ trackB: track, bpmB: track.bpm, posB: 0, playingB: false });
+      set({ trackB: track, bpmB: track.bpm, posB: 0, playingB: false, hotCuesB: [null, null, null, null], loopStartB: null, loopEndB: null, loopB: false });
     }
   },
 }));

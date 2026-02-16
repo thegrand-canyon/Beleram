@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 
 interface KnobProps {
   value: number;
@@ -25,26 +25,56 @@ export default function Knob({ value, onChange, label, color = "#00f0ff", min = 
     e.preventDefault();
   };
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (!dragging.current) return;
       const delta = (startY.current - e.clientY) * ((max - min) / 150);
-      onChange(Math.round(Math.max(min, Math.min(max, startVal.current + delta))));
+      onChangeRef.current(Math.round(Math.max(min, Math.min(max, startVal.current + delta))));
     };
     const up = () => { dragging.current = false; };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+  }, [min, max]);
+
+  const handleDoubleClick = useCallback(() => {
+    onChange(Math.round((max + min) / 2));
   }, [onChange, min, max]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+      e.preventDefault();
+      onChange(Math.min(max, value + step));
+    } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      onChange(Math.max(min, value - step));
+    }
+  }, [onChange, value, min, max]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, userSelect: "none" }}>
-      <div onMouseDown={handleMouseDown} style={{
-        width: size, height: size, borderRadius: "50%",
-        background: "radial-gradient(circle at 40% 35%, #3a3a4a, #1a1a2e)",
-        border: `2px solid ${color}33`, cursor: "ns-resize", position: "relative",
-        boxShadow: `0 0 ${size / 4}px ${color}22, inset 0 1px 3px rgba(0,0,0,0.5)`,
-      }}>
+      <div
+        onMouseDown={handleMouseDown}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        role="slider"
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        style={{
+          width: size, height: size, borderRadius: "50%",
+          background: "radial-gradient(circle at 40% 35%, #3a3a4a, #1a1a2e)",
+          border: `2px solid ${color}33`, cursor: "ns-resize", position: "relative",
+          boxShadow: `0 0 ${size / 4}px ${color}22, inset 0 1px 3px rgba(0,0,0,0.5)`,
+          outline: "none",
+        }}
+      >
         <div style={{
           position: "absolute", top: "50%", left: "50%", width: 2, height: size * 0.35,
           background: color, borderRadius: 1, transformOrigin: "top center",

@@ -6,7 +6,7 @@ export default function Crossfader() {
   const {
     crossfader, setCrossfader, autoTrans, setAutoTrans,
     trackA, trackB, playingA, setPlayingA, playingB, setPlayingB,
-    setSyncB,
+    setSyncB, setEqA, setEqB, setVolA, setVolB,
   } = useDJStore();
 
   const handleManualAutoMix = () => {
@@ -14,8 +14,13 @@ export default function Crossfader() {
     if (!playingA) setPlayingA(true);
     if (!playingB) setPlayingB(true);
     setSyncB(true);
-    setAutoTrans(true);
+    // Reset to clean state before auto-mix
+    setEqA({ hi: 50, mid: 50, lo: 50 });
+    setEqB({ hi: 50, mid: 50, lo: 50 });
+    setVolA(80);
+    setVolB(80);
     setCrossfader(0);
+    setAutoTrans(true);
   };
 
   return (

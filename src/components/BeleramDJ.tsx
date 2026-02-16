@@ -103,54 +103,77 @@ export default function BeleramDJ() {
     const engine = getEngine();
     let raf: number;
     const tick = () => {
-      if (store.trackA?.audioBuffer && engine.deckA.playing) {
+      const s = useDJStore.getState();
+      if (s.trackA?.audioBuffer && engine.deckA.playing) {
         const pos = engine.deckA.currentTime;
-        if (pos >= (store.trackA.duration || Infinity)) {
-          store.setPlayingA(false);
-          store.setPosA(0);
+        if (pos >= (s.trackA.duration - 0.05)) {
+          s.setPlayingA(false);
+          s.setPosA(0);
         } else {
-          store.setPosA(pos);
+          s.setPosA(pos);
         }
       }
-      if (store.trackB?.audioBuffer && engine.deckB.playing) {
+      if (s.trackB?.audioBuffer && engine.deckB.playing) {
         const pos = engine.deckB.currentTime;
-        if (pos >= (store.trackB.duration || Infinity)) {
-          store.setPlayingB(false);
-          store.setPosB(0);
+        if (pos >= (s.trackB.duration - 0.05)) {
+          s.setPlayingB(false);
+          s.setPosB(0);
         } else {
-          store.setPosB(pos);
+          s.setPosB(pos);
         }
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [store.trackA, store.trackB, getEngine, store]);
+  }, [getEngine]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
 
       const s = useDJStore.getState();
+      // Block play/pause shortcuts during auto transitions
+      if (s.autoTrans && (e.key === " " || e.key.toLowerCase() === "b")) return;
+
       switch (e.key.toLowerCase()) {
-        case " ": // Space - toggle deck A play
+        case " ":
           e.preventDefault();
           s.setPlayingA(!s.playingA);
           break;
-        case "b": // B - toggle deck B play
+        case "b":
           s.setPlayingB(!s.playingB);
           break;
-        case "arrowleft": // Crossfader left
+        case "arrowleft":
+          e.preventDefault();
           s.setCrossfader(Math.max(0, s.crossfader - 5));
           break;
-        case "arrowright": // Crossfader right
+        case "arrowright":
+          e.preventDefault();
           s.setCrossfader(Math.min(100, s.crossfader + 5));
           break;
-        case "s": // Sync deck B
+        case "s":
           s.setSyncB(!s.syncB);
           break;
+        case "q":
+          s.setLoopA(!s.loopA);
+          break;
+        case "l":
+          s.setLoopB(!s.loopB);
+          break;
+        case "1": case "2": case "3": case "4": {
+          // Hot cues for Deck A
+          const idx = parseInt(e.key) - 1;
+          if (s.trackA) {
+            if (s.hotCuesA[idx] != null) {
+              s.setPosA(s.hotCuesA[idx]! * s.trackA.duration);
+            } else {
+              s.setHotCueA(idx, s.posA / s.trackA.duration);
+            }
+          }
+          break;
+        }
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -398,16 +421,20 @@ export default function BeleramDJ() {
   }, [store.autoTrans, store.autoDJMode, getEngine]);
 
   // Auto DJ engine
+  const transitionQueued = useRef(false);
   useEffect(() => {
-    if (!store.autoDJ) return;
+    if (!store.autoDJ) {
+      transitionQueued.current = false;
+      return;
+    }
     const interval = setInterval(() => {
       const s = useDJStore.getState();
-      // How early to load next track depends on mode (longer transitions need earlier load)
       const triggerPoint = s.autoDJMode === "smart" ? 0.50 : s.autoDJMode === "long" ? 0.55 : s.autoDJMode === "smooth" ? 0.65 : 0.70;
       const leadIn = s.autoDJMode === "smart" ? 3000 : s.autoDJMode === "long" ? 4000 : s.autoDJMode === "drop" ? 3000 : 2000;
 
-      if (s.trackA && s.posA > s.trackA.duration * triggerPoint && !s.autoTrans && s.crossfader < 50) {
+      if (s.trackA && s.posA > s.trackA.duration * triggerPoint && !s.autoTrans && s.crossfader < 50 && !transitionQueued.current) {
         if (s.queue.length > 0 && !s.trackB) {
+          transitionQueued.current = true;
           const next = s.shiftQueue();
           if (next) {
             s.setTrackB(next);
@@ -438,6 +465,7 @@ export default function BeleramDJ() {
         s.setSyncB(false);
         s.setVolA(80);
         s.setAutoDJStatus(`Now playing: "${title}"`);
+        transitionQueued.current = false;
       }
     }, 500);
     return () => clearInterval(interval);
@@ -508,7 +536,10 @@ export default function BeleramDJ() {
             side="A" track={store.trackA} playing={store.playingA} setPlaying={store.setPlayingA}
             bpm={store.bpmA} setBpm={store.setBpmA} position={store.posA} setPosition={store.setPosA}
             volume={store.volA} setVolume={store.setVolA} eq={store.eqA} setEq={store.setEqA}
-            loop={store.loopA} setLoop={store.setLoopA} otherTrack={store.trackB}
+            loop={store.loopA} setLoop={store.setLoopA}
+            loopStart={store.loopStartA} loopEnd={store.loopEndA} setLoopRegion={store.setLoopRegionA}
+            hotCues={store.hotCuesA} setHotCue={store.setHotCueA}
+            otherTrack={store.trackB}
             synced={store.syncA} setSynced={store.setSyncA} otherBpm={store.bpmB}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "A")}
           />
@@ -523,7 +554,10 @@ export default function BeleramDJ() {
             side="B" track={store.trackB} playing={store.playingB} setPlaying={store.setPlayingB}
             bpm={store.bpmB} setBpm={store.setBpmB} position={store.posB} setPosition={store.setPosB}
             volume={store.volB} setVolume={store.setVolB} eq={store.eqB} setEq={store.setEqB}
-            loop={store.loopB} setLoop={store.setLoopB} otherTrack={store.trackA}
+            loop={store.loopB} setLoop={store.setLoopB}
+            loopStart={store.loopStartB} loopEnd={store.loopEndB} setLoopRegion={store.setLoopRegionB}
+            hotCues={store.hotCuesB} setHotCue={store.setHotCueB}
+            otherTrack={store.trackA}
             synced={store.syncB} setSynced={store.setSyncB} otherBpm={store.bpmA}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "B")}
           />
