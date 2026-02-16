@@ -15,6 +15,8 @@ import Queue from "./Queue";
 import Guide from "./Guide";
 import FileDropZone from "./FileDropZone";
 import SpotifyBrowser from "./SpotifyBrowser";
+import SamplePads from "./SamplePads";
+import RecordButton from "./RecordButton";
 
 export default function BeleramDJ() {
   const store = useDJStore();
@@ -32,15 +34,9 @@ export default function BeleramDJ() {
   // Sync audio engine with store state
   useEffect(() => {
     const engine = getEngine();
-
-    // Sync crossfader
     engine.setCrossfade(store.crossfader);
-
-    // Sync volumes
     engine.deckA.setVolume(store.volA);
     engine.deckB.setVolume(store.volB);
-
-    // Sync EQ
     engine.deckA.setEqHi(store.eqA.hi);
     engine.deckA.setEqMid(store.eqA.mid);
     engine.deckA.setEqLo(store.eqA.lo);
@@ -98,7 +94,7 @@ export default function BeleramDJ() {
     }
   }, [store.bpmB, store.trackB, getEngine]);
 
-  // Update positions from audio engine (for tracks with real audio)
+  // Update positions from audio engine
   useEffect(() => {
     const engine = getEngine();
     let raf: number;
@@ -134,7 +130,6 @@ export default function BeleramDJ() {
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
 
       const s = useDJStore.getState();
-      // Block play/pause shortcuts during auto transitions
       if (s.autoTrans && (e.key === " " || e.key.toLowerCase() === "b")) return;
 
       switch (e.key.toLowerCase()) {
@@ -163,7 +158,6 @@ export default function BeleramDJ() {
           s.setLoopB(!s.loopB);
           break;
         case "1": case "2": case "3": case "4": {
-          // Hot cues for Deck A
           const idx = parseInt(e.key) - 1;
           if (s.trackA) {
             if (s.hotCuesA[idx] != null) {
@@ -180,7 +174,7 @@ export default function BeleramDJ() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Auto transition engine — different transition styles per mode
+  // Auto transition engine
   const transStartTime = useRef<number>(0);
   const smartTransRef = useRef<SmartTransition | null>(null);
   useEffect(() => {
@@ -203,7 +197,6 @@ export default function BeleramDJ() {
       smartTransRef.current = null;
     };
 
-    // ─── SMART MODE: beat-aware, energy-reactive ───
     if (mode === "smart") {
       const engine = getEngine();
       const bpm = useDJStore.getState().bpmA || 128;
@@ -215,7 +208,6 @@ export default function BeleramDJ() {
         if (!smart) return;
 
         const state = smart.tick();
-
         s.setCrossfader(state.crossfader);
         s.setEqA(state.eqA);
         s.setEqB(state.eqB);
@@ -224,15 +216,11 @@ export default function BeleramDJ() {
         s.setTransitionProgress(state.progress);
         s.setAutoDJStatus(`${state.statusText}`);
 
-        if (state.phase === "done") {
-          finishTransition(s);
-        }
+        if (state.phase === "done") finishTransition(s);
       }, 50);
       return () => clearInterval(interval);
     }
 
-    // ─── TIMED MODES ───
-    // Duration in seconds
     const duration = mode === "party" ? 12 : mode === "drop" ? 20 : mode === "long" ? 45 : mode === "echo" ? 18 : 24;
     transStartTime.current = Date.now();
 
@@ -242,16 +230,9 @@ export default function BeleramDJ() {
       const t = Math.min(1, elapsed / duration);
 
       if (mode === "smooth") {
-        // ─── SMOOTH BLEND ───
-        // Long gradual crossfade with professional bass-swap technique
-        // Phase 1 (0–30%): Bring in new track with bass/mids cut, only highs
-        // Phase 2 (30–50%): Slowly bring in mids on new track
-        // Phase 3 (50–65%): Bass swap — cut outgoing bass, bring in incoming bass
-        // Phase 4 (65–100%): Fade out outgoing track completely
         const eased = 0.5 - 0.5 * Math.cos(t * Math.PI);
         const cf = startCrossfader + (100 - startCrossfader) * eased;
         s.setCrossfader(cf);
-
         if (t < 0.3) {
           const p = t / 0.3;
           s.setEqB({ hi: Math.round(20 + 30 * p), mid: Math.round(10 + 15 * p), lo: 5 });
@@ -262,7 +243,6 @@ export default function BeleramDJ() {
           s.setEqA({ hi: 50, mid: 50, lo: 50 });
         } else if (t < 0.65) {
           const p = (t - 0.5) / 0.15;
-          // Bass swap: smooth sine curve to avoid sudden cut
           const swapCurve = 0.5 - 0.5 * Math.cos(p * Math.PI);
           s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 45 * swapCurve) });
           s.setEqB({ hi: 50, mid: 50, lo: Math.round(15 + 35 * swapCurve) });
@@ -273,30 +253,19 @@ export default function BeleramDJ() {
           s.setEqB({ hi: 50, mid: 50, lo: 50 });
         }
       } else if (mode === "drop") {
-        // ─── DROP CUT ───
-        // Build tension by filtering outgoing track, then hard-cut to new track
-        // Phase 1 (0–60%): Slowly high-pass outgoing, tease new track quietly
-        // Phase 2 (60–80%): Build tension — cut everything, just hi-hats
-        // Phase 3 (80–85%): Brief silence/drop moment
-        // Phase 4 (85–100%): BANG — snap to new track at full energy
         if (t < 0.6) {
           const p = t / 0.6;
-          // Gradually filter outgoing — remove bass and mids
           s.setEqA({ hi: 50, mid: Math.round(50 - 30 * p), lo: Math.round(50 - 45 * p) });
-          // Tease incoming — very quiet, just highs
           s.setEqB({ hi: Math.round(15 + 10 * p), mid: 5, lo: 0 });
           s.setCrossfader(startCrossfader + 20 * p);
           s.setVolB(Math.round(20 + 15 * p));
         } else if (t < 0.8) {
           const p = (t - 0.6) / 0.2;
-          // Tension build — outgoing becomes just hi-hats
           s.setEqA({ hi: Math.round(40 - 20 * p), mid: Math.round(20 - 15 * p), lo: 5 });
-          // Incoming still teasing
           s.setEqB({ hi: Math.round(25 + 10 * p), mid: Math.round(5 + 10 * p), lo: 0 });
           s.setCrossfader(startCrossfader + 20 + 15 * p);
           s.setVolB(Math.round(35 + 10 * p));
         } else if (t < 0.85) {
-          // Brief tension moment — pull back both
           const p = (t - 0.8) / 0.05;
           s.setEqA({ hi: Math.round(20 - 15 * p), mid: 5, lo: 5 });
           s.setEqB({ hi: Math.round(35 - 20 * p), mid: Math.round(15 - 10 * p), lo: 0 });
@@ -304,10 +273,8 @@ export default function BeleramDJ() {
           s.setVolB(Math.round(45 - 20 * p));
           s.setCrossfader(startCrossfader + 35 + 5 * p);
         } else {
-          // DROP! Hard cut to new track
           const p = (t - 0.85) / 0.15;
-          // Snap crossfader and volume
-          const snap = Math.min(1, p * 3); // Fast snap in first third of this phase
+          const snap = Math.min(1, p * 3);
           s.setCrossfader(startCrossfader + 40 + 60 * snap);
           s.setVolA(Math.round(30 * (1 - snap)));
           s.setVolB(80);
@@ -315,48 +282,33 @@ export default function BeleramDJ() {
           s.setEqB({ hi: 50, mid: 50, lo: 50 });
         }
       } else if (mode === "long") {
-        // ─── LONG MIX (festival style) ───
-        // Very slow, almost imperceptible blend over ~45 seconds
-        // Gentle volume curves with careful EQ management
-        const eased = t * t * (3 - 2 * t); // smoothstep
+        const eased = t * t * (3 - 2 * t);
         const cf = startCrossfader + (100 - startCrossfader) * eased;
         s.setCrossfader(cf);
-
         if (t < 0.2) {
-          // Introduce incoming track — just a whisper of highs
           const p = t / 0.2;
           s.setEqB({ hi: Math.round(10 + 20 * p), mid: Math.round(5 + 10 * p), lo: 0 });
           s.setEqA({ hi: 50, mid: 50, lo: 50 });
         } else if (t < 0.4) {
-          // Gradually open up incoming mids
           const p = (t - 0.2) / 0.2;
           s.setEqB({ hi: Math.round(30 + 10 * p), mid: Math.round(15 + 20 * p), lo: Math.round(5 * p) });
           s.setEqA({ hi: 50, mid: 50, lo: 50 });
         } else if (t < 0.55) {
-          // Slow bass swap
           const p = (t - 0.4) / 0.15;
           const curve = 0.5 - 0.5 * Math.cos(p * Math.PI);
           s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 40 * curve) });
           s.setEqB({ hi: 40, mid: 35, lo: Math.round(5 + 45 * curve) });
         } else if (t < 0.75) {
-          // Bring incoming to full, start pulling outgoing mids
           const p = (t - 0.55) / 0.2;
           s.setEqA({ hi: Math.round(50 - 15 * p), mid: Math.round(50 - 15 * p), lo: 10 });
           s.setEqB({ hi: 50, mid: 50, lo: 50 });
         } else {
-          // Gentle fade out of outgoing
           const p = (t - 0.75) / 0.25;
           const fade = 0.5 + 0.5 * Math.cos(p * Math.PI);
           s.setEqA({ hi: Math.round(35 * fade), mid: Math.round(35 * fade), lo: Math.round(10 * fade) });
           s.setEqB({ hi: 50, mid: 50, lo: 50 });
         }
       } else if (mode === "echo") {
-        // ─── ECHO OUT ───
-        // Outgoing track fades with echo/filter effect, new track rises from silence
-        // Phase 1 (0–30%): Bring in new track's highs while outgoing still strong
-        // Phase 2 (30–50%): Cut outgoing bass, start EQ filtering (simulated echo)
-        // Phase 3 (50–75%): Outgoing gets progressively more filtered, volume drops
-        // Phase 4 (75–100%): New track takes over completely
         if (t < 0.3) {
           const p = t / 0.3;
           s.setCrossfader(startCrossfader + 15 * p);
@@ -365,41 +317,34 @@ export default function BeleramDJ() {
         } else if (t < 0.5) {
           const p = (t - 0.3) / 0.2;
           s.setCrossfader(startCrossfader + 15 + 20 * p);
-          // Simulate echo-out: progressively cut mids/bass, boost highs briefly
           s.setEqA({ hi: Math.round(50 + 10 * Math.sin(p * Math.PI)), mid: Math.round(50 - 25 * p), lo: Math.round(50 - 40 * p) });
           s.setEqB({ hi: Math.round(35 + 15 * p), mid: Math.round(15 + 20 * p), lo: Math.round(5 + 15 * p) });
         } else if (t < 0.75) {
           const p = (t - 0.5) / 0.25;
           s.setCrossfader(startCrossfader + 35 + 35 * p);
-          // Outgoing: heavy filter, dropping volume
           s.setEqA({ hi: Math.round(60 - 40 * p), mid: Math.round(25 - 20 * p), lo: Math.round(10 - 8 * p) });
           s.setVolA(Math.round(80 - 40 * p));
-          // Incoming: opening up
           const curve = 0.5 - 0.5 * Math.cos(p * Math.PI);
           s.setEqB({ hi: 50, mid: Math.round(35 + 15 * curve), lo: Math.round(20 + 30 * curve) });
         } else {
           const p = (t - 0.75) / 0.25;
           s.setCrossfader(startCrossfader + 70 + 30 * p);
-          // Outgoing fades to nothing
           const fade = 1 - p;
           s.setEqA({ hi: Math.round(20 * fade), mid: Math.round(5 * fade), lo: 2 });
           s.setVolA(Math.round(40 * fade * fade));
           s.setEqB({ hi: 50, mid: 50, lo: 50 });
         }
       } else {
-        // ─── QUICK MIX (party) ───
-        // Fast but still musical — 12 seconds with punchy bass swap
-        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease-in-out quad
+        // party / quick mix
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
         const cf = startCrossfader + (100 - startCrossfader) * eased;
         s.setCrossfader(cf);
-
         if (t < 0.25) {
           const p = t / 0.25;
           s.setEqB({ hi: Math.round(30 + 20 * p), mid: Math.round(20 + 15 * p), lo: 10 });
           s.setEqA({ hi: 50, mid: 50, lo: 50 });
         } else if (t < 0.5) {
           const p = (t - 0.25) / 0.25;
-          // Quick bass swap
           const swapCurve = 0.5 - 0.5 * Math.cos(p * Math.PI);
           s.setEqA({ hi: 50, mid: 50, lo: Math.round(50 - 45 * swapCurve) });
           s.setEqB({ hi: 50, mid: Math.round(35 + 15 * swapCurve), lo: Math.round(10 + 40 * swapCurve) });
@@ -509,6 +454,7 @@ export default function BeleramDJ() {
         @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes glow { 0%,100% { box-shadow: 0 0 8px #8866ff33; } 50% { box-shadow: 0 0 20px #8866ff55; } }
+        @keyframes recPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; box-shadow: 0 0 12px #ff333366; } }
       `}</style>
 
       <Header />
@@ -538,16 +484,22 @@ export default function BeleramDJ() {
             volume={store.volA} setVolume={store.setVolA} eq={store.eqA} setEq={store.setEqA}
             loop={store.loopA} setLoop={store.setLoopA}
             loopStart={store.loopStartA} loopEnd={store.loopEndA} setLoopRegion={store.setLoopRegionA}
+            loopSize={store.loopSizeA} setLoopSize={store.setLoopSizeA}
             hotCues={store.hotCuesA} setHotCue={store.setHotCueA}
             otherTrack={store.trackB}
             synced={store.syncA} setSynced={store.setSyncA} otherBpm={store.bpmB}
+            keyLock={store.keyLockA} setKeyLock={store.setKeyLockA}
+            pfl={store.pflA} setPfl={store.setPflA}
+            fx={store.fxA} setFx={store.setFxA}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "A")}
           />
 
-          {/* Center: Crossfader + Auto DJ */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 150 }}>
+          {/* Center: Crossfader + Auto DJ + Samples + Record */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
             <Crossfader />
             <AutoDJPanel />
+            <SamplePads />
+            <RecordButton />
           </div>
 
           <Deck
@@ -556,9 +508,13 @@ export default function BeleramDJ() {
             volume={store.volB} setVolume={store.setVolB} eq={store.eqB} setEq={store.setEqB}
             loop={store.loopB} setLoop={store.setLoopB}
             loopStart={store.loopStartB} loopEnd={store.loopEndB} setLoopRegion={store.setLoopRegionB}
+            loopSize={store.loopSizeB} setLoopSize={store.setLoopSizeB}
             hotCues={store.hotCuesB} setHotCue={store.setHotCueB}
             otherTrack={store.trackA}
             synced={store.syncB} setSynced={store.setSyncB} otherBpm={store.bpmA}
+            keyLock={store.keyLockB} setKeyLock={store.setKeyLockB}
+            pfl={store.pflB} setPfl={store.setPflB}
+            fx={store.fxB} setFx={store.setFxB}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "B")}
           />
         </div>
@@ -567,7 +523,7 @@ export default function BeleramDJ() {
         <div style={{ flex: 1, minHeight: 220, borderRadius: 14, overflow: "hidden", background: "linear-gradient(180deg, rgba(20,20,35,0.9), rgba(12,12,25,0.95))", border: "1px solid rgba(255,255,255,0.04)", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
             <div style={{ display: "flex", gap: 4 }}>
-              {([["library", "🎵 Library"], ["queue", `📋 Queue (${store.queue.length})`], ["spotify", "🎧 Spotify"], ["guide", "📖 Guide"]] as const).map(([id, label]) => (
+              {([["library", "Library"], ["queue", `Queue (${store.queue.length})`], ["spotify", "Spotify"], ["guide", "Guide"]] as const).map(([id, label]) => (
                 <button key={id} onClick={() => store.setBottomTab(id)} style={{ padding: "5px 12px", borderRadius: 5, border: `1px solid ${store.bottomTab === id ? "#8866ff33" : "rgba(255,255,255,0.04)"}`, background: store.bottomTab === id ? "#8866ff15" : "transparent", color: store.bottomTab === id ? "#8866ff" : "#666", fontSize: 10, fontWeight: 600, cursor: "pointer", textTransform: "uppercase", letterSpacing: 1 }}>
                   {label}
                 </button>

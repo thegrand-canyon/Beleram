@@ -1,19 +1,21 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import { RGBWaveformData } from "@/audio/RGBWaveformAnalyzer";
 
 interface WaveformProps {
   data: number[];
+  rgbData?: RGBWaveformData;
   progress: number;
   color: string;
   playing: boolean;
   onSeek?: (progress: number) => void;
-  hotCues?: (number | null)[];  // positions as 0-1 fractions
-  loopStart?: number | null;    // 0-1
-  loopEnd?: number | null;      // 0-1
+  hotCues?: (number | null)[];
+  loopStart?: number | null;
+  loopEnd?: number | null;
 }
 
-export default function Waveform({ data, progress, color, playing, onSeek, hotCues, loopStart, loopEnd }: WaveformProps) {
+export default function Waveform({ data, rgbData, progress, color, playing, onSeek, hotCues, loopStart, loopEnd }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(600);
@@ -25,7 +27,7 @@ export default function Waveform({ data, progress, color, playing, onSeek, hotCu
     if (!container) return;
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
-      if (w && w > 0) setCanvasWidth(Math.round(w * 2)); // 2x for retina
+      if (w && w > 0) setCanvasWidth(Math.round(w * 2));
     });
     ro.observe(container);
     return () => ro.disconnect();
@@ -52,21 +54,57 @@ export default function Waveform({ data, progress, color, playing, onSeek, hotCu
       ctx.setLineDash([]);
     }
 
-    // Draw waveform bars
     const px = progress * w;
-    const barW = Math.max(1, w / data.length - 1);
-    data.forEach((v, i) => {
-      const x = (i / data.length) * w;
-      const bh = v * h * 0.8;
-      const isPast = x < px;
-      ctx.fillStyle = isPast ? color + "cc" : color + "33";
-      if (isPast) {
-        ctx.shadowBlur = 2;
-        ctx.shadowColor = color;
+    const numBars = data.length;
+    const barW = Math.max(1, w / numBars - 1);
+
+    if (rgbData) {
+      // RGB colored waveform
+      for (let i = 0; i < numBars; i++) {
+        const x = (i / numBars) * w;
+        const isPast = x < px;
+        const alpha = isPast ? 0.85 : 0.4;
+
+        const bassH = rgbData.bass[i] * h * 0.35;
+        const midH = rgbData.mid[i] * h * 0.3;
+        const hiH = rgbData.hi[i] * h * 0.25;
+
+        const centerY = h / 2;
+
+        // Bass (red/orange) — bottom
+        ctx.fillStyle = `rgba(255,60,60,${alpha})`;
+        if (isPast) { ctx.shadowBlur = 2; ctx.shadowColor = "#ff3c3c"; }
+        ctx.fillRect(x, centerY, barW, bassH);
+        ctx.fillRect(x, centerY - bassH, barW, bassH);
+
+        // Mid (green) — middle
+        ctx.fillStyle = `rgba(80,255,120,${alpha * 0.9})`;
+        ctx.shadowColor = "#50ff78";
+        const midOffset = bassH * 0.3;
+        ctx.fillRect(x, centerY + midOffset, barW, midH);
+        ctx.fillRect(x, centerY - midOffset - midH, barW, midH);
+
+        // Hi (blue/cyan) — top
+        ctx.fillStyle = `rgba(80,200,255,${alpha * 0.8})`;
+        ctx.shadowColor = "#50c8ff";
+        const hiOffset = bassH * 0.3 + midH * 0.5;
+        ctx.fillRect(x, centerY + hiOffset, barW, hiH);
+        ctx.fillRect(x, centerY - hiOffset - hiH, barW, hiH);
+
+        ctx.shadowBlur = 0;
       }
-      ctx.fillRect(x, (h - bh) / 2, barW, bh);
-      ctx.shadowBlur = 0;
-    });
+    } else {
+      // Monochrome waveform (fallback)
+      data.forEach((v, i) => {
+        const x = (i / numBars) * w;
+        const bh = v * h * 0.8;
+        const isPast = x < px;
+        ctx.fillStyle = isPast ? color + "cc" : color + "33";
+        if (isPast) { ctx.shadowBlur = 2; ctx.shadowColor = color; }
+        ctx.fillRect(x, (h - bh) / 2, barW, bh);
+        ctx.shadowBlur = 0;
+      });
+    }
 
     // Draw hot cue markers
     if (hotCues) {
@@ -75,14 +113,12 @@ export default function Waveform({ data, progress, color, playing, onSeek, hotCu
         if (pos == null) return;
         const cx = pos * w;
         ctx.fillStyle = cueColors[i % 4];
-        // Triangle marker at top
         ctx.beginPath();
         ctx.moveTo(cx - 4, 0);
         ctx.lineTo(cx + 4, 0);
         ctx.lineTo(cx, 8);
         ctx.closePath();
         ctx.fill();
-        // Vertical line
         ctx.strokeStyle = cueColors[i % 4] + "66";
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -98,7 +134,7 @@ export default function Waveform({ data, progress, color, playing, onSeek, hotCu
     ctx.shadowBlur = 8;
     ctx.fillRect(px - 1, 0, 2, h);
     ctx.shadowBlur = 0;
-  }, [data, progress, color, playing, canvasWidth, hotCues, loopStart, loopEnd]);
+  }, [data, rgbData, progress, color, playing, canvasWidth, hotCues, loopStart, loopEnd]);
 
   const seekFromEvent = useCallback((clientX: number) => {
     if (!onSeek || !containerRef.current) return;

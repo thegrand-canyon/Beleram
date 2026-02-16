@@ -1,3 +1,5 @@
+import { RGBWaveformData } from "@/audio/RGBWaveformAnalyzer";
+
 export interface Track {
   id: string;
   title: string;
@@ -11,12 +13,19 @@ export interface Track {
   audioBuffer?: AudioBuffer;
   spotifyUri?: string;
   waveformData?: number[];
+  rgbWaveformData?: RGBWaveformData;
 }
 
 export interface EQState {
   hi: number;
   mid: number;
   lo: number;
+}
+
+export interface EffectParams {
+  enabled: boolean;
+  wetDry: number; // 0-100
+  param: number;  // 0-100
 }
 
 export interface DeckState {

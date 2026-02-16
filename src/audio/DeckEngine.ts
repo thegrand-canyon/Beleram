@@ -1,10 +1,12 @@
 import { EQNode } from "./EQNode";
+import { EffectsChain } from "./EffectsChain";
 
 export class DeckEngine {
   private ctx: AudioContext;
   private source: AudioBufferSourceNode | null = null;
   private _buffer: AudioBuffer | null = null;
   private eq: EQNode;
+  readonly effects: EffectsChain;
   private volumeGain: GainNode;
   private crossfadeGain: GainNode;
   private analyser: AnalyserNode;
@@ -12,21 +14,37 @@ export class DeckEngine {
   private _pauseOffset: number = 0;
   private _playing: boolean = false;
   private _playbackRate: number = 1;
+  private _keyLock: boolean = false;
   private _onEnded: (() => void) | null = null;
+  // PFL (pre-fader listen) — cue output
+  private pflGain: GainNode;
+  private _pflEnabled: boolean = false;
 
-  constructor(ctx: AudioContext, destination: AudioNode) {
+  constructor(ctx: AudioContext, destination: AudioNode, pflDestination?: AudioNode) {
     this.ctx = ctx;
     this.eq = new EQNode(ctx);
+    this.effects = new EffectsChain(ctx);
     this.volumeGain = ctx.createGain();
     this.crossfadeGain = ctx.createGain();
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 256;
 
-    // Chain: EQ → volume → crossfade → analyser → destination
-    this.eq.output.connect(this.volumeGain);
+    // PFL cue send
+    this.pflGain = ctx.createGain();
+    this.pflGain.gain.value = 0;
+
+    // Chain: EQ → Effects → volume → crossfade → analyser → destination
+    this.eq.output.connect(this.effects.input);
+    this.effects.output.connect(this.volumeGain);
     this.volumeGain.connect(this.crossfadeGain);
     this.crossfadeGain.connect(this.analyser);
     this.analyser.connect(destination);
+
+    // PFL tap: pre-fader (before crossfade)
+    this.volumeGain.connect(this.pflGain);
+    if (pflDestination) {
+      this.pflGain.connect(pflDestination);
+    }
   }
 
   get buffer(): AudioBuffer | null {
@@ -63,6 +81,13 @@ export class DeckEngine {
     this.source = this.ctx.createBufferSource();
     this.source.buffer = this._buffer;
     this.source.playbackRate.value = this._playbackRate;
+    // Key lock: use detune to compensate pitch shift from playback rate change
+    if (this._keyLock && this._playbackRate !== 1) {
+      // detune in cents: -1200 * log2(playbackRate) compensates the pitch shift
+      this.source.detune.value = -1200 * Math.log2(this._playbackRate);
+    } else {
+      this.source.detune.value = 0;
+    }
     this.source.connect(this.eq.input);
     this.source.start(0, this._pauseOffset);
     this._startTime = this.ctx.currentTime - this._pauseOffset / this._playbackRate;
@@ -134,10 +159,49 @@ export class DeckEngine {
     this._playbackRate = rate;
     if (this.source) {
       this.source.playbackRate.setTargetAtTime(rate, this.ctx.currentTime, 0.01);
+      // Key lock compensation
+      if (this._keyLock) {
+        this.source.detune.setTargetAtTime(-1200 * Math.log2(rate), this.ctx.currentTime, 0.01);
+      } else {
+        this.source.detune.setTargetAtTime(0, this.ctx.currentTime, 0.01);
+      }
     }
   }
 
+  setKeyLock(enabled: boolean) {
+    this._keyLock = enabled;
+    if (this.source) {
+      if (enabled) {
+        this.source.detune.setTargetAtTime(-1200 * Math.log2(this._playbackRate), this.ctx.currentTime, 0.01);
+      } else {
+        this.source.detune.setTargetAtTime(0, this.ctx.currentTime, 0.01);
+      }
+    }
+  }
+
+  get keyLock(): boolean {
+    return this._keyLock;
+  }
+
+  // PFL / headphone cue
+  setPFL(enabled: boolean) {
+    this._pflEnabled = enabled;
+    this.pflGain.gain.setTargetAtTime(enabled ? 1 : 0, this.ctx.currentTime, 0.01);
+  }
+
+  get pflEnabled(): boolean {
+    return this._pflEnabled;
+  }
+
   getAnalyserData(): Uint8Array {
+    const data = new Uint8Array(this.analyser.frequencyBinCount);
+    this.analyser.getByteFrequencyData(data);
+    return data;
+  }
+
+  // Get full frequency data for spectrum analyzer (higher resolution)
+  getSpectrumData(): Uint8Array {
+    // Use the analyser with current fftSize
     const data = new Uint8Array(this.analyser.frequencyBinCount);
     this.analyser.getByteFrequencyData(data);
     return data;
