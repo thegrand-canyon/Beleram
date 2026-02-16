@@ -1,6 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { useDJStore } from "@/stores/djStore";
+import { useAudioEngine } from "@/hooks/useAudioEngine";
+import { CrossfaderCurve } from "@/types";
+
+const CURVES: { id: CrossfaderCurve; label: string; desc: string }[] = [
+  { id: "sharp", label: "SHARP", desc: "Hard cut" },
+  { id: "linear", label: "LINEAR", desc: "Even fade" },
+  { id: "smooth", label: "SMOOTH", desc: "Equal power" },
+];
 
 export default function Crossfader() {
   const {
@@ -8,7 +17,15 @@ export default function Crossfader() {
     trackA, trackB, playingA, setPlayingA, playingB, setPlayingB,
     setSyncB, setEqA, setEqB, setVolA, setVolB,
     setTransitionProgress, setAutoDJStatus,
+    crossfaderCurve, setCrossfaderCurve,
   } = useDJStore();
+  const { getEngine } = useAudioEngine();
+
+  // Sync crossfader curve to engine
+  useEffect(() => {
+    const engine = getEngine();
+    engine.crossfaderCurve = crossfaderCurve;
+  }, [crossfaderCurve, getEngine]);
 
   const handleManualAutoMix = () => {
     if (!trackA || !trackB) return;
@@ -27,7 +44,6 @@ export default function Crossfader() {
     setAutoTrans(false);
     setTransitionProgress(0);
     setAutoDJStatus("");
-    // Keep current crossfader/EQ/volume where they are — don't snap
   };
 
   return (
@@ -43,6 +59,27 @@ export default function Crossfader() {
           <button key={l} onClick={() => setCrossfader(v)} style={{ padding: "3px 8px", borderRadius: 4, border: `1px solid ${c}33`, background: crossfader === v ? `${c}22` : "transparent", color: crossfader === v ? c : "#555", fontSize: 8, cursor: "pointer", fontWeight: 700 }}>{l}</button>
         ))}
       </div>
+
+      {/* Crossfader Curve Selector */}
+      <div style={{ display: "flex", gap: 3, width: "100%" }}>
+        {CURVES.map((curve) => (
+          <button
+            key={curve.id}
+            onClick={() => setCrossfaderCurve(curve.id)}
+            title={curve.desc}
+            style={{
+              flex: 1, padding: "3px 0", borderRadius: 4, fontSize: 7, fontWeight: 700,
+              cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
+              border: `1px solid ${crossfaderCurve === curve.id ? "#8866ff44" : "rgba(255,255,255,0.04)"}`,
+              background: crossfaderCurve === curve.id ? "#8866ff15" : "transparent",
+              color: crossfaderCurve === curve.id ? "#8866ff" : "#555",
+            }}
+          >
+            {curve.label}
+          </button>
+        ))}
+      </div>
+
       {autoTrans ? (
         <button onClick={handleStopMix} style={{
           width: "100%", padding: "6px 14px", borderRadius: 6,
@@ -64,7 +101,7 @@ export default function Crossfader() {
           cursor: (trackA && trackB) ? "pointer" : "default",
           textTransform: "uppercase", letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace",
         }}>
-          ✨ Auto Mix
+          Auto Mix
         </button>
       )}
     </div>

@@ -40,4 +40,11 @@ export interface DeckState {
 }
 
 export type AutoDJMode = "smart" | "smooth" | "drop" | "long" | "echo" | "party";
-export type BottomTab = "library" | "queue" | "spotify" | "guide";
+export type BottomTab = "library" | "queue" | "history" | "spotify" | "guide";
+export type CrossfaderCurve = "sharp" | "linear" | "smooth";
+
+export interface HistoryEntry {
+  track: Track;
+  timestamp: number;
+  deck: "A" | "B";
+}

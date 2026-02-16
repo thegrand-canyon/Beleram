@@ -13,13 +13,21 @@ export default function TrackLibrary() {
     queue, addToQueue, removeFromQueue,
     trackA, trackB, loadTrack,
     showAddTrack, setShowAddTrack,
+    favorites, toggleFavorite,
+    trackTags, setTrackTag,
+    trackComments, setTrackComment,
   } = useDJStore();
 
   const [newTrack, setNewTrack] = useState({ title: "", artist: "", bpm: 128, key: "Am", genre: "House", energy: 5 });
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [hideDemos, setHideDemos] = useState(false);
+  const [showFavOnly, setShowFavOnly] = useState(false);
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingComment, setEditingComment] = useState<string | null>(null);
 
-  const filtered = filterTracks(tracks, searchQuery).filter((t) => !hideDemos || t.source !== "demo");
+  const filtered = filterTracks(tracks, searchQuery)
+    .filter((t) => !hideDemos || t.source !== "demo")
+    .filter((t) => !showFavOnly || favorites.has(t.id));
   const currentKey = trackA?.key || trackB?.key;
   const hasDemos = tracks.some((t) => t.source === "demo");
   const hasLocal = tracks.some((t) => t.source === "local");
@@ -72,6 +80,9 @@ export default function TrackLibrary() {
       <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
         <div />
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={() => setShowFavOnly(!showFavOnly)} style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${showFavOnly ? "#ff668833" : "rgba(255,255,255,0.06)"}`, background: showFavOnly ? "#ff668812" : "transparent", color: showFavOnly ? "#ff6688" : "#555", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>
+            {showFavOnly ? "All Tracks" : "Favorites"}
+          </button>
           {hasDemos && hasLocal && (
             <button onClick={() => setHideDemos(!hideDemos)} style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${hideDemos ? "#ffaa0033" : "rgba(255,255,255,0.06)"}`, background: hideDemos ? "#ffaa0012" : "transparent", color: hideDemos ? "#ffaa00" : "#555", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>
               {hideDemos ? "Show Demos" : "Hide Demos"}
@@ -115,13 +126,14 @@ export default function TrackLibrary() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
           <thead>
             <tr style={{ color: "#444", fontSize: 9, textTransform: "uppercase", letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace" }}>
+              <th style={{ padding: "7px 4px", textAlign: "center", width: 24 }}></th>
               <th style={{ padding: "7px 10px", textAlign: "left" }}>Title</th>
               <th style={{ padding: "7px", textAlign: "left" }}>Artist</th>
               <th style={{ padding: "7px", textAlign: "center" }}>BPM</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Key</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Energy</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Time</th>
-              <th style={{ padding: "7px", textAlign: "center" }}>Genre</th>
+              <th style={{ padding: "7px", textAlign: "center" }}>Tag</th>
               <th style={{ padding: "7px", textAlign: "center" }}>Actions</th>
             </tr>
           </thead>
@@ -148,6 +160,11 @@ export default function TrackLibrary() {
                   onMouseEnter={(e) => !isLoaded && (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = isLoaded ? "rgba(136,102,255,0.03)" : "transparent")}
                 >
+                  <td style={{ padding: "7px 4px", textAlign: "center" }}>
+                    <button onClick={() => toggleFavorite(t.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: favorites.has(t.id) ? "#ff6688" : "#333", padding: 0 }}>
+                      {favorites.has(t.id) ? "♥" : "♡"}
+                    </button>
+                  </td>
                   <td style={{ padding: "7px 10px", fontWeight: 600, color: "#ddd" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 10, color: "#444", cursor: "grab" }}>⠿</span>
@@ -155,6 +172,9 @@ export default function TrackLibrary() {
                       {t.source === "local" && <span style={{ fontSize: 8, color: "#00f0ff", padding: "1px 5px", background: "#00f0ff15", borderRadius: 3 }}>LOCAL</span>}
                       {t.source === "demo" && <span style={{ fontSize: 8, color: "#ffaa00", padding: "1px 5px", background: "#ffaa0012", borderRadius: 3 }}>DEMO</span>}
                     </div>
+                    {trackComments[t.id] && (
+                      <div style={{ fontSize: 9, color: "#666", marginTop: 2, fontStyle: "italic" }}>{trackComments[t.id]}</div>
+                    )}
                   </td>
                   <td style={{ padding: "7px", color: "#888" }}>{t.artist}</td>
                   <td style={{ padding: "7px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace", color: "#aaa" }}>{t.bpm}</td>
@@ -169,13 +189,37 @@ export default function TrackLibrary() {
                     </div>
                   </td>
                   <td style={{ padding: "7px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace", color: "#666", fontSize: 10 }}>{formatTime(t.duration)}</td>
-                  <td style={{ padding: "7px", textAlign: "center", color: "#666", fontSize: 10 }}>{t.genre}</td>
+                  <td style={{ padding: "7px", textAlign: "center" }}>
+                    {editingTag === t.id ? (
+                      <input
+                        type="text"
+                        autoFocus
+                        defaultValue={trackTags[t.id] || ""}
+                        onBlur={(e) => { setTrackTag(t.id, e.target.value); setEditingTag(null); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { setTrackTag(t.id, (e.target as HTMLInputElement).value); setEditingTag(null); } }}
+                        style={{ width: 60, padding: "2px 4px", borderRadius: 3, border: "1px solid #8866ff44", background: "rgba(0,0,0,0.3)", color: "#ccc", fontSize: 9, outline: "none" }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditingTag(t.id)}
+                        style={{ cursor: "pointer", fontSize: 9, color: trackTags[t.id] ? "#8866ff" : "#444", padding: "1px 5px", borderRadius: 3, background: trackTags[t.id] ? "#8866ff12" : "transparent" }}
+                      >
+                        {trackTags[t.id] || t.genre}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ padding: "7px", textAlign: "center" }}>
                     <div style={{ display: "flex", justifyContent: "center", gap: 3 }}>
                       <button onClick={() => loadTrack(t, "A")} disabled={isLoaded} style={{ padding: "2px 8px", borderRadius: 3, border: "1px solid #00f0ff22", background: t.id === trackA?.id ? "#00f0ff15" : "transparent", color: t.id === trackA?.id ? "#00f0ff66" : "#00f0ff", fontSize: 9, fontWeight: 700, cursor: isLoaded ? "default" : "pointer" }}>A</button>
                       <button onClick={() => loadTrack(t, "B")} disabled={isLoaded} style={{ padding: "2px 8px", borderRadius: 3, border: "1px solid #ff6ec722", background: t.id === trackB?.id ? "#ff6ec715" : "transparent", color: t.id === trackB?.id ? "#ff6ec766" : "#ff6ec7", fontSize: 9, fontWeight: 700, cursor: isLoaded ? "default" : "pointer" }}>B</button>
                       <button onClick={() => inQueue ? removeFromQueue(t.id) : addToQueue(t)} style={{ padding: "2px 8px", borderRadius: 3, border: `1px solid ${inQueue ? "#ffaa0033" : "rgba(255,255,255,0.08)"}`, background: inQueue ? "#ffaa0015" : "transparent", color: inQueue ? "#ffaa00" : "#666", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
                         {inQueue ? "−Q" : "+Q"}
+                      </button>
+                      <button onClick={() => {
+                        const comment = prompt("Add a note for this track:", trackComments[t.id] || "");
+                        if (comment !== null) setTrackComment(t.id, comment);
+                      }} style={{ padding: "2px 6px", borderRadius: 3, border: `1px solid ${trackComments[t.id] ? "#8866ff33" : "rgba(255,255,255,0.08)"}`, background: trackComments[t.id] ? "#8866ff12" : "transparent", color: trackComments[t.id] ? "#8866ff" : "#666", fontSize: 9, fontWeight: 700, cursor: "pointer" }} title="Add note">
+                        ...
                       </button>
                       <button
                         onClick={() => !isLoaded && removeTrack(t.id)}

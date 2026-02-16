@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Track, AutoDJMode, BottomTab, EQState, EffectParams } from "@/types";
+import { Track, AutoDJMode, BottomTab, EQState, EffectParams, CrossfaderCurve, HistoryEntry } from "@/types";
 import { DEMO_TRACKS } from "@/lib/constants";
 
 const DEFAULT_EFFECT: EffectParams = { enabled: false, wetDry: 50, param: 50 };
@@ -115,6 +115,31 @@ interface DJStore {
   setBottomTab: (t: BottomTab) => void;
   showAddTrack: boolean;
   setShowAddTrack: (v: boolean) => void;
+
+  // Master
+  masterVol: number;
+  setMasterVol: (v: number) => void;
+  crossfaderCurve: CrossfaderCurve;
+  setCrossfaderCurve: (c: CrossfaderCurve) => void;
+
+  // History
+  history: HistoryEntry[];
+  addToHistory: (track: Track, deck: "A" | "B") => void;
+  clearHistory: () => void;
+
+  // Track prep
+  favorites: Set<string>;
+  toggleFavorite: (id: string) => void;
+  trackTags: Record<string, string>;
+  setTrackTag: (id: string, tag: string) => void;
+  trackComments: Record<string, string>;
+  setTrackComment: (id: string, comment: string) => void;
+
+  // Autogain
+  autogainA: boolean;
+  autogainB: boolean;
+  setAutogainA: (v: boolean) => void;
+  setAutogainB: (v: boolean) => void;
 
   // Load track helpers
   loadTrack: (track: Track, deck: "A" | "B") => void;
@@ -275,8 +300,42 @@ export const useDJStore = create<DJStore>((set, get) => ({
   showAddTrack: false,
   setShowAddTrack: (v) => set({ showAddTrack: v }),
 
+  // Master
+  masterVol: 80,
+  setMasterVol: (v) => set({ masterVol: v }),
+  crossfaderCurve: "smooth",
+  setCrossfaderCurve: (c) => set({ crossfaderCurve: c }),
+
+  // History
+  history: [],
+  addToHistory: (track, deck) => set((s) => ({
+    history: [{ track, timestamp: Date.now(), deck }, ...s.history].slice(0, 50),
+  })),
+  clearHistory: () => set({ history: [] }),
+
+  // Track prep
+  favorites: new Set<string>(),
+  toggleFavorite: (id) => set((s) => {
+    const next = new Set(s.favorites);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return { favorites: next };
+  }),
+  trackTags: {},
+  setTrackTag: (id, tag) => set((s) => ({ trackTags: { ...s.trackTags, [id]: tag } })),
+  trackComments: {},
+  setTrackComment: (id, comment) => set((s) => ({ trackComments: { ...s.trackComments, [id]: comment } })),
+
+  // Autogain
+  autogainA: false,
+  autogainB: false,
+  setAutogainA: (v) => set({ autogainA: v }),
+  setAutogainB: (v) => set({ autogainB: v }),
+
   // Load track
   loadTrack: (track, deck) => {
+    const { addToHistory } = get();
+    addToHistory(track, deck);
     if (deck === "A") {
       set({ trackA: track, bpmA: track.bpm, posA: 0, playingA: false, hotCuesA: [null, null, null, null], loopStartA: null, loopEndA: null, loopSizeA: null, loopA: false });
     } else {

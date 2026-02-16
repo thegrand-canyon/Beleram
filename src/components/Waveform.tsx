@@ -13,9 +13,10 @@ interface WaveformProps {
   hotCues?: (number | null)[];
   loopStart?: number | null;
   loopEnd?: number | null;
+  zoom?: number; // 1 = full view, 2 = 2x zoom, etc.
 }
 
-export default function Waveform({ data, rgbData, progress, color, playing, onSeek, hotCues, loopStart, loopEnd }: WaveformProps) {
+export default function Waveform({ data, rgbData, progress, color, playing, onSeek, hotCues, loopStart, loopEnd, zoom = 1 }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(600);
@@ -41,10 +42,21 @@ export default function Waveform({ data, rgbData, progress, color, playing, onSe
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
+    // Zoom: calculate visible window centered on playhead
+    const viewWidth = 1 / zoom; // fraction of total visible
+    let viewStart = progress - viewWidth / 2;
+    let viewEnd = progress + viewWidth / 2;
+    if (viewStart < 0) { viewEnd -= viewStart; viewStart = 0; }
+    if (viewEnd > 1) { viewStart -= (viewEnd - 1); viewEnd = 1; }
+    viewStart = Math.max(0, viewStart);
+
+    // Convert progress/positions to canvas coords within zoomed view
+    const toCanvasX = (p: number) => ((p - viewStart) / viewWidth) * w;
+
     // Draw loop region
     if (loopStart != null && loopEnd != null) {
-      const lx1 = loopStart * w;
-      const lx2 = loopEnd * w;
+      const lx1 = toCanvasX(loopStart);
+      const lx2 = toCanvasX(loopEnd);
       ctx.fillStyle = `${color}0a`;
       ctx.fillRect(lx1, 0, lx2 - lx1, h);
       ctx.strokeStyle = `${color}44`;
@@ -54,14 +66,16 @@ export default function Waveform({ data, rgbData, progress, color, playing, onSe
       ctx.setLineDash([]);
     }
 
-    const px = progress * w;
+    const px = toCanvasX(progress);
     const numBars = data.length;
-    const barW = Math.max(1, w / numBars - 1);
+    const barW = Math.max(1, (w / numBars) * zoom - 1);
 
     if (rgbData) {
       // RGB colored waveform
       for (let i = 0; i < numBars; i++) {
-        const x = (i / numBars) * w;
+        const barProgress = i / numBars;
+        if (barProgress < viewStart - 1 / numBars || barProgress > viewEnd + 1 / numBars) continue;
+        const x = toCanvasX(barProgress);
         const isPast = x < px;
         const alpha = isPast ? 0.85 : 0.4;
 
@@ -96,7 +110,9 @@ export default function Waveform({ data, rgbData, progress, color, playing, onSe
     } else {
       // Monochrome waveform (fallback)
       data.forEach((v, i) => {
-        const x = (i / numBars) * w;
+        const barProgress = i / numBars;
+        if (barProgress < viewStart - 1 / numBars || barProgress > viewEnd + 1 / numBars) return;
+        const x = toCanvasX(barProgress);
         const bh = v * h * 0.8;
         const isPast = x < px;
         ctx.fillStyle = isPast ? color + "cc" : color + "33";
@@ -111,7 +127,7 @@ export default function Waveform({ data, rgbData, progress, color, playing, onSe
       const cueColors = ["#ff3366", "#00ff88", "#ffaa00", "#00aaff"];
       hotCues.forEach((pos, i) => {
         if (pos == null) return;
-        const cx = pos * w;
+        const cx = toCanvasX(pos);
         ctx.fillStyle = cueColors[i % 4];
         ctx.beginPath();
         ctx.moveTo(cx - 4, 0);
@@ -134,14 +150,22 @@ export default function Waveform({ data, rgbData, progress, color, playing, onSe
     ctx.shadowBlur = 8;
     ctx.fillRect(px - 1, 0, 2, h);
     ctx.shadowBlur = 0;
-  }, [data, rgbData, progress, color, playing, canvasWidth, hotCues, loopStart, loopEnd]);
+  }, [data, rgbData, progress, color, playing, canvasWidth, hotCues, loopStart, loopEnd, zoom]);
 
   const seekFromEvent = useCallback((clientX: number) => {
     if (!onSeek || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const p = (clientX - rect.left) / rect.width;
+    const clickFrac = (clientX - rect.left) / rect.width;
+    // Convert from zoomed canvas space back to track progress
+    const viewWidth = 1 / zoom;
+    let viewStart = progress - viewWidth / 2;
+    let viewEnd = progress + viewWidth / 2;
+    if (viewStart < 0) { viewEnd -= viewStart; viewStart = 0; }
+    if (viewEnd > 1) { viewStart -= (viewEnd - 1); viewEnd = 1; }
+    viewStart = Math.max(0, viewStart);
+    const p = viewStart + clickFrac * viewWidth;
     onSeek(Math.max(0, Math.min(1, p)));
-  }, [onSeek]);
+  }, [onSeek, zoom, progress]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();

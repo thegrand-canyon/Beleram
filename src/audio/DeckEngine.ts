@@ -215,4 +215,21 @@ export class DeckEngine {
     }
     return (sum / data.length / 255) * 100;
   }
+
+  // Autogain: analyze peak level of buffer and return recommended gain (0-100 scale)
+  getAutogainLevel(): number {
+    if (!this._buffer) return 80;
+    const channelData = this._buffer.getChannelData(0);
+    let peak = 0;
+    // Sample every 100th value for speed
+    for (let i = 0; i < channelData.length; i += 100) {
+      const abs = Math.abs(channelData[i]);
+      if (abs > peak) peak = abs;
+    }
+    if (peak === 0) return 80;
+    // Target peak at 0.85 (leave headroom)
+    const targetGain = 0.85 / peak;
+    // Convert to 0-100 scale, clamped
+    return Math.round(Math.min(100, Math.max(20, targetGain * 80)));
+  }
 }

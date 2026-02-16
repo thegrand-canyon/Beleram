@@ -44,6 +44,8 @@ interface DeckProps {
   setPfl: (v: boolean) => void;
   fx: { filter: EffectParams; delay: EffectParams; reverb: EffectParams; flanger: EffectParams };
   setFx: (fx: Partial<{ filter: EffectParams; delay: EffectParams; reverb: EffectParams; flanger: EffectParams }>) => void;
+  autogain: boolean;
+  setAutogain: (v: boolean) => void;
   onTrackDrop?: (trackId: string) => void;
 }
 
@@ -60,6 +62,7 @@ export default function Deck({
   otherTrack, synced, setSynced, otherBpm,
   keyLock, setKeyLock, pfl, setPfl,
   fx, setFx,
+  autogain, setAutogain,
   onTrackDrop,
 }: DeckProps) {
   const color = side === "A" ? "#00f0ff" : "#ff6ec7";
@@ -70,6 +73,11 @@ export default function Deck({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasRealAudio = !!track?.audioBuffer;
   const [beatPulse, setBeatPulse] = useState(false);
+  const [waveformZoom, setWaveformZoom] = useState(1);
+
+  // Tap tempo state
+  const tapTimesRef = useRef<number[]>([]);
+  const [tapBpm, setTapBpm] = useState<number | null>(null);
 
   useEffect(() => {
     if (track) {
@@ -121,6 +129,15 @@ export default function Deck({
     const deck = side === "A" ? engine.deckA : engine.deckB;
     deck.setPFL(pfl);
   }, [pfl, hasRealAudio, side, getEngine]);
+
+  // Autogain: when enabled and track loaded, calculate optimal volume
+  useEffect(() => {
+    if (!autogain || !hasRealAudio) return;
+    const engine = getEngine();
+    const deck = side === "A" ? engine.deckA : engine.deckB;
+    const level = deck.getAutogainLevel();
+    setVolume(level);
+  }, [autogain, hasRealAudio, track, side, getEngine, setVolume]);
 
   // Simulated playback for demo tracks
   useEffect(() => {
@@ -217,6 +234,32 @@ export default function Deck({
     if (!loop) setLoop(true);
   }, [track, position, loopStart, setLoopRegion, setLoopSize, loop, setLoop]);
 
+  // Tap tempo handler
+  const handleTapTempo = useCallback(() => {
+    const now = performance.now();
+    const taps = tapTimesRef.current;
+    // Reset if last tap was more than 2 seconds ago
+    if (taps.length > 0 && now - taps[taps.length - 1] > 2000) {
+      tapTimesRef.current = [now];
+      setTapBpm(null);
+      return;
+    }
+    taps.push(now);
+    if (taps.length > 8) taps.shift();
+    if (taps.length >= 2) {
+      const intervals = [];
+      for (let i = 1; i < taps.length; i++) {
+        intervals.push(taps[i] - taps[i - 1]);
+      }
+      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+      const detected = Math.round(60000 / avgInterval);
+      if (detected >= 60 && detected <= 200) {
+        setTapBpm(detected);
+        setBpm(detected);
+      }
+    }
+  }, [setBpm]);
+
   useEffect(() => {
     if (synced && otherBpm) setBpm(otherBpm);
   }, [synced, otherBpm, setBpm]);
@@ -294,6 +337,9 @@ export default function Deck({
           <button onClick={() => setPfl(!pfl)} title="Pre-Fader Listen — headphone cue" style={{ padding: "3px 7px", borderRadius: 4, border: `1px solid ${pfl ? "#00ff88" : "rgba(255,255,255,0.06)"}`, background: pfl ? "#00ff8818" : "transparent", color: pfl ? "#00ff88" : "#555", fontSize: 8, fontWeight: 700, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}>
             PFL
           </button>
+          <button onClick={() => setAutogain(!autogain)} title="Auto-gain — normalizes volume" style={{ padding: "3px 7px", borderRadius: 4, border: `1px solid ${autogain ? "#00ccff" : "rgba(255,255,255,0.06)"}`, background: autogain ? "#00ccff18" : "transparent", color: autogain ? "#00ccff" : "#555", fontSize: 8, fontWeight: 700, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}>
+            AG
+          </button>
           <button onClick={() => setSynced(!synced)} style={{ padding: "3px 7px", borderRadius: 4, border: `1px solid ${synced ? "#00ff88" : "rgba(255,255,255,0.06)"}`, background: synced ? "#00ff8818" : "transparent", color: synced ? "#00ff88" : "#555", fontSize: 8, fontWeight: 700, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}>
             {synced ? "SYNC" : "SYNC"}
           </button>
@@ -326,7 +372,7 @@ export default function Deck({
         <div style={{ padding: "8px 0", textAlign: "center", color: "#555", fontSize: 11 }}>Upload audio files and load a track</div>
       )}
 
-      {/* Waveform */}
+      {/* Waveform + Zoom */}
       <div style={{ position: "relative" }}>
         <Waveform
           data={waveformRef.current}
@@ -338,8 +384,20 @@ export default function Deck({
           hotCues={waveformHotCues}
           loopStart={waveformLoopStart}
           loopEnd={waveformLoopEnd}
+          zoom={waveformZoom}
         />
-        {track && <div style={{ position: "absolute", bottom: 2, right: 6, fontSize: 9, color: "#aaa", fontFamily: "'JetBrains Mono', monospace", pointerEvents: "none" }}>{formatTime(position)} / {formatTime(track.duration)}</div>}
+        {track && (
+          <div style={{ position: "absolute", bottom: 2, right: 6, display: "flex", alignItems: "center", gap: 6, pointerEvents: "none" }}>
+            <span style={{ fontSize: 9, color: "#aaa", fontFamily: "'JetBrains Mono', monospace" }}>{formatTime(position)} / {formatTime(track.duration)}</span>
+          </div>
+        )}
+        {track && (
+          <div style={{ position: "absolute", bottom: 2, left: 6, display: "flex", alignItems: "center", gap: 4, pointerEvents: "auto" }}>
+            <span style={{ fontSize: 7, color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>ZOOM</span>
+            <input type="range" min={1} max={8} step={0.5} value={waveformZoom} onChange={(e) => setWaveformZoom(+e.target.value)} style={{ width: 50, height: 3, cursor: "pointer" }} />
+            <span style={{ fontSize: 7, color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>{waveformZoom}x</span>
+          </div>
+        )}
       </div>
 
       {/* Spectrum Analyzer */}
@@ -431,11 +489,25 @@ export default function Deck({
         <button onClick={() => { setLoop(!loop); if (loop) { setLoopRegion(null, null); setLoopSize(null); } }} style={{ width: 32, height: 32, borderRadius: 6, border: `1px solid ${loop ? "#ffaa00" : color + "33"}`, background: loop ? "#ffaa0018" : "rgba(255,255,255,0.02)", color: loop ? "#ffaa00" : "#666", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>LP</button>
       </div>
 
-      {/* BPM controls */}
+      {/* BPM controls + Tap Tempo */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4 }}>
-        <button onClick={() => setBpm(Math.max(80, bpm - 1))} style={{ width: 22, height: 22, borderRadius: 4, border: `1px solid ${color}22`, background: "transparent", color: "#666", fontSize: 12, cursor: "pointer" }}>-</button>
+        <button onClick={() => setBpm(Math.max(60, bpm - 1))} style={{ width: 22, height: 22, borderRadius: 4, border: `1px solid ${color}22`, background: "transparent", color: "#666", fontSize: 12, cursor: "pointer" }}>-</button>
+        <button onClick={() => setBpm(Math.max(60, +(bpm - 0.1).toFixed(1)))} style={{ width: 18, height: 22, borderRadius: 4, border: `1px solid ${color}11`, background: "transparent", color: "#444", fontSize: 8, cursor: "pointer" }}>-.1</button>
         <div style={{ padding: "2px 10px", borderRadius: 4, background: "rgba(0,0,0,0.3)", fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color, minWidth: 65, textAlign: "center" }}>{bpm} <span style={{ fontSize: 7, color: "#666" }}>BPM</span></div>
-        <button onClick={() => setBpm(Math.min(180, bpm + 1))} style={{ width: 22, height: 22, borderRadius: 4, border: `1px solid ${color}22`, background: "transparent", color: "#666", fontSize: 12, cursor: "pointer" }}>+</button>
+        <button onClick={() => setBpm(Math.min(200, +(bpm + 0.1).toFixed(1)))} style={{ width: 18, height: 22, borderRadius: 4, border: `1px solid ${color}11`, background: "transparent", color: "#444", fontSize: 8, cursor: "pointer" }}>+.1</button>
+        <button onClick={() => setBpm(Math.min(200, bpm + 1))} style={{ width: 22, height: 22, borderRadius: 4, border: `1px solid ${color}22`, background: "transparent", color: "#666", fontSize: 12, cursor: "pointer" }}>+</button>
+        <button
+          onClick={handleTapTempo}
+          style={{
+            padding: "3px 8px", borderRadius: 4, fontSize: 8, fontWeight: 700, cursor: "pointer",
+            border: `1px solid ${tapBpm ? color + "44" : color + "22"}`,
+            background: tapBpm ? `${color}15` : "transparent",
+            color: tapBpm ? color : "#666",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          TAP
+        </button>
       </div>
 
       {/* EQ + Volume knobs */}

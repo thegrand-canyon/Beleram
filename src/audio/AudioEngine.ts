@@ -1,13 +1,17 @@
 import { DeckEngine } from "./DeckEngine";
 import { SampleEngine } from "./SampleEngine";
 
+export type CrossfaderCurve = "sharp" | "linear" | "smooth";
+
 export class AudioEngine {
   private ctx: AudioContext;
   private masterGain: GainNode;
-  private pflGain: GainNode; // Headphone cue bus
+  private masterAnalyser: AnalyserNode;
+  private pflGain: GainNode;
   readonly deckA: DeckEngine;
   readonly deckB: DeckEngine;
   readonly samples: SampleEngine;
+  private _crossfaderCurve: CrossfaderCurve = "smooth";
 
   // Recording
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
@@ -18,9 +22,12 @@ export class AudioEngine {
   constructor() {
     this.ctx = new AudioContext();
     this.masterGain = this.ctx.createGain();
-    this.masterGain.connect(this.ctx.destination);
+    this.masterAnalyser = this.ctx.createAnalyser();
+    this.masterAnalyser.fftSize = 256;
+    this.masterGain.connect(this.masterAnalyser);
+    this.masterAnalyser.connect(this.ctx.destination);
 
-    // PFL bus — headphone pre-listen (routed to destination separately)
+    // PFL bus
     this.pflGain = this.ctx.createGain();
     this.pflGain.gain.value = 0.8;
     this.pflGain.connect(this.ctx.destination);
@@ -45,11 +52,56 @@ export class AudioEngine {
     return this.ctx.decodeAudioData(arrayBuffer);
   }
 
-  // Equal-power crossfade. value: 0-100 (0 = full A, 100 = full B)
+  // Master volume: 0-100
+  setMasterVolume(value: number) {
+    this.masterGain.gain.setTargetAtTime(value / 100, this.ctx.currentTime, 0.01);
+  }
+
+  getMasterVULevel(): number {
+    const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
+    this.masterAnalyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    return (sum / data.length / 255) * 100;
+  }
+
+  // Crossfader curve
+  set crossfaderCurve(curve: CrossfaderCurve) {
+    this._crossfaderCurve = curve;
+  }
+
+  get crossfaderCurve(): CrossfaderCurve {
+    return this._crossfaderCurve;
+  }
+
+  // Crossfade with curve selection
   setCrossfade(value: number) {
-    const normalized = value / 100;
-    this.deckA.setCrossfadeGain(Math.cos(normalized * Math.PI / 2));
-    this.deckB.setCrossfadeGain(Math.sin(normalized * Math.PI / 2));
+    const n = value / 100;
+    let gainA: number, gainB: number;
+
+    switch (this._crossfaderCurve) {
+      case "sharp":
+        // Hard cut — fast transition, good for scratching
+        gainA = n < 0.5 ? 1 : Math.max(0, 1 - (n - 0.5) * 4);
+        gainB = n > 0.5 ? 1 : Math.max(0, (n - 0.5) * 4 + 1) * (n > 0.02 ? 1 : n * 50);
+        // Simplified: both full in the middle range, fast cut at edges
+        gainA = n <= 0.05 ? 1 : n >= 0.95 ? 0 : n < 0.5 ? 1 : Math.cos((n - 0.5) * Math.PI);
+        gainB = n >= 0.95 ? 1 : n <= 0.05 ? 0 : n > 0.5 ? 1 : Math.sin(n * Math.PI);
+        break;
+      case "linear":
+        gainA = 1 - n;
+        gainB = n;
+        break;
+      case "smooth":
+      default:
+        // Equal-power (default)
+        gainA = Math.cos(n * Math.PI / 2);
+        gainB = Math.sin(n * Math.PI / 2);
+        break;
+    }
+
+    this.deckA.setCrossfadeGain(gainA);
+    this.deckB.setCrossfadeGain(gainB);
   }
 
   // --- RECORDING ---
@@ -68,29 +120,12 @@ export class AudioEngine {
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) this.recordedChunks.push(e.data);
       };
-      this.mediaRecorder.start(1000); // collect data every second
+      this.mediaRecorder.start(1000);
       this._isRecording = true;
       return true;
     } catch {
       return false;
     }
-  }
-
-  stopRecording(): Blob | null {
-    if (!this._isRecording || !this.mediaRecorder) return null;
-    return new Promise<Blob>((resolve) => {
-      this.mediaRecorder!.onstop = () => {
-        const blob = new Blob(this.recordedChunks, { type: this.mediaRecorder!.mimeType });
-        this.recordedChunks = [];
-        if (this.mediaStreamDest) {
-          try { this.masterGain.disconnect(this.mediaStreamDest); } catch {}
-          this.mediaStreamDest = null;
-        }
-        this._isRecording = false;
-        resolve(blob);
-      };
-      this.mediaRecorder!.stop();
-    }) as unknown as Blob;
   }
 
   async stopRecordingAsync(): Promise<Blob | null> {

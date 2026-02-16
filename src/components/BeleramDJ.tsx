@@ -17,6 +17,8 @@ import FileDropZone from "./FileDropZone";
 import SpotifyBrowser from "./SpotifyBrowser";
 import SamplePads from "./SamplePads";
 import RecordButton from "./RecordButton";
+import MasterControls from "./MasterControls";
+import History from "./History";
 
 export default function BeleramDJ() {
   const store = useDJStore();
@@ -455,6 +457,14 @@ export default function BeleramDJ() {
         @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes glow { 0%,100% { box-shadow: 0 0 8px #8866ff33; } 50% { box-shadow: 0 0 20px #8866ff55; } }
         @keyframes recPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; box-shadow: 0 0 12px #ff333366; } }
+        @media (max-width: 1200px) {
+          .beleram-decks { flex-direction: column !important; }
+          .beleram-center { flex-direction: row !important; min-width: unset !important; flex-wrap: wrap; justify-content: center; }
+        }
+        @media (max-width: 768px) {
+          .beleram-main { padding: 10px 8px 0 !important; }
+          .beleram-bottom-tabs { flex-wrap: wrap; }
+        }
       `}</style>
 
       <Header />
@@ -475,9 +485,9 @@ export default function BeleramDJ() {
       <TipsBar />
 
       {/* Main DJ Area */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px 20px 0", gap: 10 }}>
+      <div className="beleram-main" style={{ flex: 1, display: "flex", flexDirection: "column", padding: "10px 20px 0", gap: 10 }}>
         {/* Decks */}
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="beleram-decks" style={{ display: "flex", gap: 10 }}>
           <Deck
             side="A" track={store.trackA} playing={store.playingA} setPlaying={store.setPlayingA}
             bpm={store.bpmA} setBpm={store.setBpmA} position={store.posA} setPosition={store.setPosA}
@@ -491,11 +501,13 @@ export default function BeleramDJ() {
             keyLock={store.keyLockA} setKeyLock={store.setKeyLockA}
             pfl={store.pflA} setPfl={store.setPflA}
             fx={store.fxA} setFx={store.setFxA}
+            autogain={store.autogainA} setAutogain={store.setAutogainA}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "A")}
           />
 
-          {/* Center: Crossfader + Auto DJ + Samples + Record */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
+          {/* Center: Master + Crossfader + Auto DJ + Samples + Record */}
+          <div className="beleram-center" style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 180 }}>
+            <MasterControls />
             <Crossfader />
             <AutoDJPanel />
             <SamplePads />
@@ -515,6 +527,7 @@ export default function BeleramDJ() {
             keyLock={store.keyLockB} setKeyLock={store.setKeyLockB}
             pfl={store.pflB} setPfl={store.setPflB}
             fx={store.fxB} setFx={store.setFxB}
+            autogain={store.autogainB} setAutogain={store.setAutogainB}
             onTrackDrop={(id) => handleTrackDropToDeck(id, "B")}
           />
         </div>
@@ -522,8 +535,8 @@ export default function BeleramDJ() {
         {/* Bottom Panel */}
         <div style={{ flex: 1, minHeight: 220, borderRadius: 14, overflow: "hidden", background: "linear-gradient(180deg, rgba(20,20,35,0.9), rgba(12,12,25,0.95))", border: "1px solid rgba(255,255,255,0.04)", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-            <div style={{ display: "flex", gap: 4 }}>
-              {([["library", "Library"], ["queue", `Queue (${store.queue.length})`], ["spotify", "Spotify"], ["guide", "Guide"]] as const).map(([id, label]) => (
+            <div className="beleram-bottom-tabs" style={{ display: "flex", gap: 4 }}>
+              {([["library", "Library"], ["queue", `Queue (${store.queue.length})`], ["history", `History (${store.history.length})`], ["spotify", "Spotify"], ["guide", "Guide"]] as const).map(([id, label]) => (
                 <button key={id} onClick={() => store.setBottomTab(id)} style={{ padding: "5px 12px", borderRadius: 5, border: `1px solid ${store.bottomTab === id ? "#8866ff33" : "rgba(255,255,255,0.04)"}`, background: store.bottomTab === id ? "#8866ff15" : "transparent", color: store.bottomTab === id ? "#8866ff" : "#666", fontSize: 10, fontWeight: 600, cursor: "pointer", textTransform: "uppercase", letterSpacing: 1 }}>
                   {label}
                 </button>
@@ -537,6 +550,7 @@ export default function BeleramDJ() {
             </>
           )}
           {store.bottomTab === "queue" && <Queue />}
+          {store.bottomTab === "history" && <History />}
           {store.bottomTab === "spotify" && <SpotifyBrowser />}
           {store.bottomTab === "guide" && <Guide />}
         </div>
