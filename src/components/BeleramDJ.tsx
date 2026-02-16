@@ -51,14 +51,18 @@ export default function BeleramDJ() {
   useEffect(() => {
     const engine = getEngine();
     const deck = engine.deckA;
-    if (store.trackA?.audioBuffer && store.playingA && !deck.playing) {
+    const s = useDJStore.getState();
+    if (s.trackA?.audioBuffer && s.playingA && !deck.playing) {
       engine.resume().then(() => {
-        if (!deck.buffer || deck.buffer !== store.trackA!.audioBuffer) {
-          deck.loadBuffer(store.trackA!.audioBuffer!);
+        const current = useDJStore.getState();
+        if (!current.trackA?.audioBuffer || !current.playingA) return;
+        if (!deck.buffer || deck.buffer !== current.trackA.audioBuffer) {
+          // Load buffer at the current store position (important for deck swaps)
+          deck.loadBuffer(current.trackA.audioBuffer, current.posA);
         }
         deck.play();
       });
-    } else if (!store.playingA && deck.playing) {
+    } else if (!s.playingA && deck.playing) {
       deck.pause();
     }
   }, [store.playingA, store.trackA, getEngine]);
@@ -67,14 +71,17 @@ export default function BeleramDJ() {
   useEffect(() => {
     const engine = getEngine();
     const deck = engine.deckB;
-    if (store.trackB?.audioBuffer && store.playingB && !deck.playing) {
+    const s = useDJStore.getState();
+    if (s.trackB?.audioBuffer && s.playingB && !deck.playing) {
       engine.resume().then(() => {
-        if (!deck.buffer || deck.buffer !== store.trackB!.audioBuffer) {
-          deck.loadBuffer(store.trackB!.audioBuffer!);
+        const current = useDJStore.getState();
+        if (!current.trackB?.audioBuffer || !current.playingB) return;
+        if (!deck.buffer || deck.buffer !== current.trackB.audioBuffer) {
+          deck.loadBuffer(current.trackB.audioBuffer, current.posB);
         }
         deck.play();
       });
-    } else if (!store.playingB && deck.playing) {
+    } else if (!s.playingB && deck.playing) {
       deck.pause();
     }
   }, [store.playingB, store.trackB, getEngine]);
@@ -96,30 +103,70 @@ export default function BeleramDJ() {
     }
   }, [store.bpmB, store.trackB, getEngine]);
 
-  // Update positions from audio engine
+  // Update positions from audio engine — handles loops, track end, and engine desync
   useEffect(() => {
     const engine = getEngine();
     let raf: number;
     const tick = () => {
       const s = useDJStore.getState();
-      if (s.trackA?.audioBuffer && engine.deckA.playing) {
-        const pos = engine.deckA.currentTime;
-        if (pos >= (s.trackA.duration - 0.05)) {
+
+      // --- Deck A ---
+      if (s.trackA?.audioBuffer) {
+        if (engine.deckA.playing) {
+          const pos = engine.deckA.currentTime;
+
+          // Loop enforcement for real audio
+          if (s.loopA && s.loopStartA != null && s.loopEndA != null) {
+            const loopEndTime = s.loopEndA * s.trackA.duration;
+            const loopStartTime = s.loopStartA * s.trackA.duration;
+            if (pos >= loopEndTime) {
+              engine.deckA.seek(loopStartTime);
+              s.setPosA(loopStartTime);
+            } else {
+              s.setPosA(pos);
+            }
+          } else if (pos >= s.trackA.duration - 0.2) {
+            // Track ended — use generous margin to avoid missing it
+            s.setPlayingA(false);
+            s.setPosA(0);
+            engine.deckA.stop();
+          } else {
+            s.setPosA(pos);
+          }
+        } else if (s.playingA && !engine.deckA.playing) {
+          // Engine stopped but store thinks it's playing — desync fix
+          // This happens when AudioBufferSourceNode fires onended
           s.setPlayingA(false);
-          s.setPosA(0);
-        } else {
-          s.setPosA(pos);
         }
       }
-      if (s.trackB?.audioBuffer && engine.deckB.playing) {
-        const pos = engine.deckB.currentTime;
-        if (pos >= (s.trackB.duration - 0.05)) {
+
+      // --- Deck B ---
+      if (s.trackB?.audioBuffer) {
+        if (engine.deckB.playing) {
+          const pos = engine.deckB.currentTime;
+
+          // Loop enforcement for real audio
+          if (s.loopB && s.loopStartB != null && s.loopEndB != null) {
+            const loopEndTime = s.loopEndB * s.trackB.duration;
+            const loopStartTime = s.loopStartB * s.trackB.duration;
+            if (pos >= loopEndTime) {
+              engine.deckB.seek(loopStartTime);
+              s.setPosB(loopStartTime);
+            } else {
+              s.setPosB(pos);
+            }
+          } else if (pos >= s.trackB.duration - 0.2) {
+            s.setPlayingB(false);
+            s.setPosB(0);
+            engine.deckB.stop();
+          } else {
+            s.setPosB(pos);
+          }
+        } else if (s.playingB && !engine.deckB.playing) {
           s.setPlayingB(false);
-          s.setPosB(0);
-        } else {
-          s.setPosB(pos);
         }
       }
+
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -384,6 +431,11 @@ export default function BeleramDJ() {
           transitionQueued.current = true;
           const next = s.shiftQueue();
           if (next) {
+            // Pre-load the buffer into the audio engine before setting store state
+            if (next.audioBuffer) {
+              const engine = getEngine();
+              engine.deckB.loadBuffer(next.audioBuffer, 0);
+            }
             s.setTrackB(next);
             s.setBpmB(next.bpm);
             s.setPosB(0);
@@ -400,23 +452,51 @@ export default function BeleramDJ() {
         }
       }
       if (s.crossfader >= 95 && s.trackB && !s.autoTrans) {
-        const title = s.trackB.title;
-        s.setTrackA(s.trackB);
-        s.setBpmA(s.bpmB);
-        s.setPosA(s.posB);
+        const engine = getEngine();
+
+        // Capture everything from deck B before we clear it
+        const trackB = s.trackB;
+        const bpmB = s.bpmB;
+        const currentPosB = engine.deckB.playing ? engine.deckB.currentTime : s.posB;
+
+        // 1. Stop deck A audio (old track is done)
+        engine.deckA.stop();
+
+        // 2. Stop deck B audio (we're moving it to A)
+        engine.deckB.pause();
+
+        // 3. Load deck B's audio into deck A at the correct position
+        if (trackB.audioBuffer) {
+          engine.deckA.loadBuffer(trackB.audioBuffer, currentPosB);
+          const rate = bpmB / (trackB.bpm || bpmB);
+          engine.deckA.setPlaybackRate(rate);
+          engine.deckA.play();
+        }
+
+        // 4. Reset crossfader to A side before setting store state
+        engine.setCrossfade(0);
+
+        // 5. Update all store state
+        s.setPlayingB(false);
+        s.setTrackA(trackB);
+        s.setBpmA(bpmB);
+        s.setPosA(currentPosB);
         s.setPlayingA(true);
         s.setTrackB(null);
-        s.setPlayingB(false);
         s.setPosB(0);
         s.setCrossfader(0);
         s.setSyncB(false);
         s.setVolA(80);
-        s.setAutoDJStatus(`Now playing: "${title}"`);
+        s.setVolB(80);
+        s.setEqA({ hi: 50, mid: 50, lo: 50 });
+        s.setEqB({ hi: 50, mid: 50, lo: 50 });
+
+        s.setAutoDJStatus(`Now playing: "${trackB.title}"`);
         transitionQueued.current = false;
       }
     }, 500);
     return () => clearInterval(interval);
-  }, [store.autoDJ]);
+  }, [store.autoDJ, getEngine]);
 
   // File drop handler
   const handleFilesDropped = useCallback(

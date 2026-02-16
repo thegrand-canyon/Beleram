@@ -1,9 +1,11 @@
 export class EQNode {
+  private ctx: AudioContext;
   private loFilter: BiquadFilterNode;
   private midFilter: BiquadFilterNode;
   private hiFilter: BiquadFilterNode;
 
   constructor(ctx: AudioContext) {
+    this.ctx = ctx;
     this.loFilter = ctx.createBiquadFilter();
     this.loFilter.type = "lowshelf";
     this.loFilter.frequency.value = 320;
@@ -39,14 +41,14 @@ export class EQNode {
   }
 
   setHi(value: number) {
-    this.hiFilter.gain.value = this.mapToDb(value);
+    this.hiFilter.gain.setTargetAtTime(this.mapToDb(value), this.ctx.currentTime, 0.02);
   }
 
   setMid(value: number) {
-    this.midFilter.gain.value = this.mapToDb(value);
+    this.midFilter.gain.setTargetAtTime(this.mapToDb(value), this.ctx.currentTime, 0.02);
   }
 
   setLo(value: number) {
-    this.loFilter.gain.value = this.mapToDb(value);
+    this.loFilter.gain.setTargetAtTime(this.mapToDb(value), this.ctx.currentTime, 0.02);
   }
 }

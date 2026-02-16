@@ -70,10 +70,10 @@ export class DeckEngine {
     this._onEnded = cb;
   }
 
-  loadBuffer(buffer: AudioBuffer) {
+  loadBuffer(buffer: AudioBuffer, startAt?: number) {
     this.stop();
     this._buffer = buffer;
-    this._pauseOffset = 0;
+    this._pauseOffset = startAt ?? 0;
   }
 
   play() {

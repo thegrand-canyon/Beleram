@@ -81,10 +81,7 @@ export class AudioEngine {
 
     switch (this._crossfaderCurve) {
       case "sharp":
-        // Hard cut — fast transition, good for scratching
-        gainA = n < 0.5 ? 1 : Math.max(0, 1 - (n - 0.5) * 4);
-        gainB = n > 0.5 ? 1 : Math.max(0, (n - 0.5) * 4 + 1) * (n > 0.02 ? 1 : n * 50);
-        // Simplified: both full in the middle range, fast cut at edges
+        // Hard cut — both decks full in center range, fast cut at edges
         gainA = n <= 0.05 ? 1 : n >= 0.95 ? 0 : n < 0.5 ? 1 : Math.cos((n - 0.5) * Math.PI);
         gainB = n >= 0.95 ? 1 : n <= 0.05 ? 0 : n > 0.5 ? 1 : Math.sin(n * Math.PI);
         break;
