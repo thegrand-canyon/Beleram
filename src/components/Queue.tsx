@@ -1,13 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { COMPATIBLE_KEYS } from "@/lib/constants";
 import { useDJStore } from "@/stores/djStore";
-import { smartSortQueue } from "@/lib/trackUtils";
+import { smartSortQueue, getSuggestedTracks } from "@/lib/trackUtils";
 
 export default function Queue() {
   const {
     queue, setQueue, removeFromQueue, moveInQueue, clearQueue,
-    trackA, trackB, loadTrack,
+    trackA, trackB, loadTrack, tracks, addToQueue,
   } = useDJStore();
 
   const currentKey = trackA?.key || trackB?.key;
@@ -17,6 +18,21 @@ export default function Queue() {
     if (!reference || queue.length < 2) return;
     setQueue(smartSortQueue(queue, reference));
   };
+
+  // Build exclude set: tracks on decks + in queue
+  const excludeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (trackA) ids.add(trackA.id);
+    if (trackB) ids.add(trackB.id);
+    queue.forEach((t) => ids.add(t.id));
+    return ids;
+  }, [trackA, trackB, queue]);
+
+  // Get smart suggestions based on what's currently playing
+  const suggestions = useMemo(() => {
+    if (!reference) return [];
+    return getSuggestedTracks(reference, tracks, excludeIds, 5);
+  }, [reference, tracks, excludeIds]);
 
   return (
     <>
@@ -29,12 +45,13 @@ export default function Queue() {
           </div>
         )}
       </div>
-      <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Queue */}
         {queue.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#444" }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Queue is Empty</div>
-            <div style={{ fontSize: 12, color: "#555" }}>Add tracks from the Library tab using the +Q button, or click &quot;Queue All&quot; to add everything.</div>
+          <div style={{ textAlign: "center", padding: "20px", color: "#444" }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Queue is Empty</div>
+            <div style={{ fontSize: 11, color: "#555" }}>Add tracks from the Library or use the suggestions below</div>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -70,6 +87,71 @@ export default function Queue() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Suggestions */}
+        {reference && suggestions.length > 0 && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 9, color: "#8866ff", textTransform: "uppercase", letterSpacing: 2, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
+                Suggested Next
+              </div>
+              <div style={{ flex: 1, height: 1, background: "rgba(136,102,255,0.15)" }} />
+              <div style={{ fontSize: 9, color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>
+                based on {reference.title}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {suggestions.map(({ track: t, score, reasons }) => (
+                <div key={t.id} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8,
+                  background: "rgba(136,102,255,0.02)",
+                  border: `1px solid rgba(136,102,255,${Math.min(0.2, score / 500)})`,
+                }}>
+                  {/* Match score bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 30 }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+                      color: score >= 70 ? "#00ff88" : score >= 50 ? "#ffaa00" : "#888",
+                    }}>{score}</div>
+                    <div style={{
+                      width: 24, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden",
+                    }}>
+                      <div style={{
+                        width: `${score}%`, height: "100%", borderRadius: 2,
+                        background: score >= 70 ? "#00ff88" : score >= 50 ? "#ffaa00" : "#666",
+                      }} />
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#ddd" }}>{t.title}</div>
+                    <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+                      {reasons.map((r, i) => (
+                        <span key={i} style={{
+                          fontSize: 8, padding: "1px 5px", borderRadius: 3,
+                          background: r.includes("Key") || r.includes("key") ? "#00ff8810" : r.includes("BPM") ? "#00f0ff10" : r.includes("genre") ? "#8866ff10" : "rgba(255,255,255,0.03)",
+                          color: r.includes("Key") || r.includes("key") ? "#00ff88" : r.includes("BPM") ? "#00f0ff" : r.includes("genre") ? "#8866ff" : "#777",
+                          border: `1px solid ${r.includes("Key") || r.includes("key") ? "#00ff8822" : "transparent"}`,
+                          fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                        }}>{r}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <span style={{ fontSize: 10, color: "#777" }}>{t.artist}</span>
+                  <span style={{ fontSize: 10, color: "#888", fontFamily: "'JetBrains Mono', monospace" }}>{t.bpm}</span>
+                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, fontFamily: "'JetBrains Mono', monospace", background: "#00ff8812", color: "#00ff88" }}>{t.key}</span>
+
+                  <div style={{ display: "flex", gap: 3 }}>
+                    <button onClick={() => addToQueue(t)} style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #8866ff33", background: "#8866ff10", color: "#8866ff", fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" }}>+Q</button>
+                    <button onClick={() => loadTrack(t, "A")} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #00f0ff22", background: "transparent", color: "#00f0ff", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>A</button>
+                    <button onClick={() => loadTrack(t, "B")} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #ff6ec722", background: "transparent", color: "#ff6ec7", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>B</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ export default function Crossfader() {
     crossfader, setCrossfader, autoTrans, setAutoTrans,
     trackA, trackB, playingA, setPlayingA, playingB, setPlayingB,
     setSyncB, setEqA, setEqB, setVolA, setVolB,
+    setTransitionProgress, setAutoDJStatus,
   } = useDJStore();
 
   const handleManualAutoMix = () => {
@@ -14,13 +15,19 @@ export default function Crossfader() {
     if (!playingA) setPlayingA(true);
     if (!playingB) setPlayingB(true);
     setSyncB(true);
-    // Reset to clean state before auto-mix
     setEqA({ hi: 50, mid: 50, lo: 50 });
     setEqB({ hi: 50, mid: 50, lo: 50 });
     setVolA(80);
     setVolB(80);
     setCrossfader(0);
     setAutoTrans(true);
+  };
+
+  const handleStopMix = () => {
+    setAutoTrans(false);
+    setTransitionProgress(0);
+    setAutoDJStatus("");
+    // Keep current crossfader/EQ/volume where they are — don't snap
   };
 
   return (
@@ -36,9 +43,30 @@ export default function Crossfader() {
           <button key={l} onClick={() => setCrossfader(v)} style={{ padding: "3px 8px", borderRadius: 4, border: `1px solid ${c}33`, background: crossfader === v ? `${c}22` : "transparent", color: crossfader === v ? c : "#555", fontSize: 8, cursor: "pointer", fontWeight: 700 }}>{l}</button>
         ))}
       </div>
-      <button onClick={handleManualAutoMix} disabled={!trackA || !trackB} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${autoTrans ? "#ffaa00" : "#8866ff33"}`, background: autoTrans ? "#ffaa0018" : "#8866ff10", color: autoTrans ? "#ffaa00" : (trackA && trackB) ? "#aaa" : "#444", fontSize: 9, fontWeight: 700, cursor: (trackA && trackB) ? "pointer" : "default", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.3s" }}>
-        {autoTrans ? "⏳ Mixing..." : "✨ Auto Mix"}
-      </button>
+      {autoTrans ? (
+        <button onClick={handleStopMix} style={{
+          width: "100%", padding: "6px 14px", borderRadius: 6,
+          border: "1px solid #ff336655",
+          background: "linear-gradient(135deg, #ff336618, #ff660018)",
+          color: "#ff6666", fontSize: 9, fontWeight: 700, cursor: "pointer",
+          textTransform: "uppercase", letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace",
+          animation: "pulse 1.5s infinite",
+        }}>
+          ■ Stop Mix
+        </button>
+      ) : (
+        <button onClick={handleManualAutoMix} disabled={!trackA || !trackB} style={{
+          width: "100%", padding: "6px 14px", borderRadius: 6,
+          border: `1px solid #8866ff33`,
+          background: "#8866ff10",
+          color: (trackA && trackB) ? "#aaa" : "#444",
+          fontSize: 9, fontWeight: 700,
+          cursor: (trackA && trackB) ? "pointer" : "default",
+          textTransform: "uppercase", letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          ✨ Auto Mix
+        </button>
+      )}
     </div>
   );
 }
